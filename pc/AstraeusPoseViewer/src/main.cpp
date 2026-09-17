@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iomanip>
 #include <memory>
+#include <stdexcept>
 
 using namespace astraeus;
 static std::unique_ptr<Receiver> receiver;

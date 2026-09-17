@@ -5,9 +5,11 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import android.view.WindowManager
+import android.view.WindowInsets
 import android.widget.*
 import com.google.ar.core.*
 import java.util.EnumSet
@@ -15,6 +17,7 @@ import java.util.Locale
 
 class MainActivity : Activity() {
     private lateinit var root: LinearLayout
+    private lateinit var host: FrameLayout
     private lateinit var status: TextView
     private lateinit var ip: EditText
     private lateinit var port: EditText
@@ -34,11 +37,19 @@ class MainActivity : Activity() {
         transport = UdpTransport()
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24,24,24,16) }
         val scroll = ScrollView(this).apply { addView(root) }
-        setContentView(scroll)
+        host = FrameLayout(this).apply { addView(scroll) }
+        setContentView(host)
         // Keep controls outside system bars with Android 15 edge-to-edge enforcement.
         scroll.setOnApplyWindowInsetsListener { view, insets ->
-            view.setPadding(insets.systemWindowInsetLeft,insets.systemWindowInsetTop,
-                insets.systemWindowInsetRight,insets.systemWindowInsetBottom); insets
+            if (Build.VERSION.SDK_INT >= 30) {
+                val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                view.setPadding(bars.left,bars.top,bars.right,bars.bottom)
+            } else {
+                @Suppress("DEPRECATION")
+                view.setPadding(insets.systemWindowInsetLeft,insets.systemWindowInsetTop,
+                    insets.systemWindowInsetRight,insets.systemWindowInsetBottom)
+            }
+            insets
         }
         val prefs = getPreferences(MODE_PRIVATE)
         ip = EditText(this).apply { hint = "PC IPv4 address"; setText(prefs.getString("ip", "")); inputType = 3 }
@@ -111,7 +122,8 @@ class MainActivity : Activity() {
             surface = GLSurfaceView(this).apply {
                 setEGLContextClientVersion(2)
                 setRenderer(renderer)
-                root.addView(this,LinearLayout.LayoutParams(1,1))
+                // Keep the camera GL surface attached even when diagnostics scroll.
+                host.addView(this,0,FrameLayout.LayoutParams(1,1))
                 onResume()
             }
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -120,7 +132,7 @@ class MainActivity : Activity() {
     private fun stopTracking() {
         ++epoch
         surface?.onPause()
-        surface?.let { root.removeView(it) }
+        surface?.let { host.removeView(it) }
         surface = null; tracker = null
         session?.pause(); session?.close(); session = null
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

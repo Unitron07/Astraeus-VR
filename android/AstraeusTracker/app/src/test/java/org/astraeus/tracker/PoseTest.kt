@@ -28,12 +28,37 @@ class PoseTest {
         val v = VelocityEstimator()
         v.sample(RigidPose(),1000000000)
         val result = v.sample(RigidPose(q=Quat(0f,0f,0f,-1f)),1010000000)
-        assertEquals(Vec3(),result.angular)
+        assertEquals(0f,result.angular.x,1e-6f)
+        assertEquals(0f,result.angular.y,1e-6f)
+        assertEquals(0f,result.angular.z,1e-6f)
     }
     @Test fun matchesIndependentBinaryFixture() {
         val fixture = javaClass.getResource("/golden_pose.hex")!!.readText().filterNot { it.isWhitespace() }
             .chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         val encoded = PosePacket.encode(PoseSample(42,7,1000000000,0,2,RigidPose(Vec3(1f,2f,-3f))))
         assertArrayEquals(fixture,encoded)
+    }
+    @Test fun angularVelocityUsesShortestArcAndOriginAxes() {
+        val v = VelocityEstimator()
+        v.sample(RigidPose(),1000000000)
+        val q = Quat(0f,sqrt(0.5f),0f,sqrt(0.5f))
+        val result = v.sample(RigidPose(q=q),1100000000)
+        assertEquals((Math.PI/0.2).toFloat(),result.angular.y,1e-4f)
+        assertEquals(0f,result.angular.x,1e-6f)
+        assertEquals(0f,result.angular.z,1e-6f)
+        assertEquals(3,result.flags)
+    }
+    @Test fun udpSenderDeliversEncodedPose() {
+        java.net.DatagramSocket(0,java.net.InetAddress.getByName("127.0.0.1")).use { receiver ->
+            receiver.soTimeout = 2000
+            UdpTransport().use { sender ->
+                sender.connect("127.0.0.1",receiver.localPort)
+                val bytes = PosePacket.encode(PoseSample(42,7,1000000000,0,2,RigidPose(Vec3(1f,2f,-3f))))
+                sender.offer(bytes)
+                val packet = java.net.DatagramPacket(ByteArray(128),128)
+                receiver.receive(packet)
+                assertArrayEquals(bytes,packet.data.copyOf(packet.length))
+            }
+        }
     }
 }
