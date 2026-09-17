@@ -20,7 +20,7 @@
 - Windows real UDP loopback: passed. Exercises receive/decode, duplicates,
   sequence gaps, malformed version, session lock/reset, recenter revision and
   opt-in CSV creation/content. The test removes only its own generated CSV.
-- Kotlin JVM tests: pose recenter math, finite-difference reset behavior,
+- Kotlin JVM tests: all six passed. Pose recenter math, finite-difference reset behavior,
   quaternion sign equivalence, angular velocity magnitude/direction, shared
   binary golden fixture and actual Kotlin UDP sender loopback.
 - Git whitespace check: passed.
@@ -35,5 +35,8 @@ validation. Windows GUI interaction and visual alignment need the documented
 synthetic smoke test and physical run; automated tests exercise the receiver and
 protocol, not screenshots.
 
-The repository includes CI for independent Android and MSVC Windows builds and
-test artifacts. Consult the GitHub Actions run for its separately reported outcome.
+The independent GitHub Windows/MSVC build and both CTest cases passed on commit
+`55aa4c6`. The initial Android CI setup attempted to install the obsolete SDK
+`tools` package; the workflow now explicitly requests `platform-tools`. Consult
+GitHub Actions for the corrected workflow's separately reported outcome and
+downloadable build artifacts.
