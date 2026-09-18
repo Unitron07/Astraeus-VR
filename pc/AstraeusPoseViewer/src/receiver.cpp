@@ -45,7 +45,7 @@ bool Receiver::toggleLogging() {
     log_.clear(); log_.open(path);
     if(!log_) { error_="Cannot open CSV in current directory"; return false; }
     error_="CSV: "+path;
-    log_<<"local_receive_time,phone_timestamp,sequence_number,session_id,device_id,origin_revision,px,py,pz,qx,qy,qz,qw,vx,vy,vz,wx,wy,wz,velocity_flags,tracking_state,accepted\n";
+    log_<<"local_receive_time,phone_timestamp,sequence_number,session_id,device_id,origin_revision,px,py,pz,qx,qy,qz,qw,vx,vy,vz,wx,wy,wz,velocity_flags,tracking_state,accepted,tracking_failure_reason\n";
     return true;
 }
 void Receiver::run() {
@@ -72,7 +72,8 @@ void Receiver::run() {
             for(float v:pose->orientation) log_<<','<<v;
             for(float v:pose->linear) log_<<','<<v;
             for(float v:pose->angular) log_<<','<<v;
-            log_<<','<<int(pose->flags)<<','<<int(pose->state)<<','<<accepted<<'\n';
+            log_<<','<<int(pose->flags)<<','<<int(pose->state)<<','<<accepted
+                <<','<<trackingFailureName(pose->trackingFailureReason)<<'\n';
             if(stream_.received%60==0) log_.flush();
             if(!log_) { log_.close(); error_="CSV write failed; logging stopped"; }
         }

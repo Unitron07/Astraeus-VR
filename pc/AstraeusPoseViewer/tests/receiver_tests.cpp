@@ -39,12 +39,29 @@ int main(int argc,char** argv) {
         bytes[16]=8; send(); waitFor([](const Stream& s){return s.foreign==1;});
         receiver.reset(); send(); waitFor([](const Stream& s){return s.accepted==1;});
         check(receiver.snapshot().latest.session==8,"reset stream selection");
+        const char* reasons[]={"NONE","BAD_STATE","INSUFFICIENT_LIGHT","EXCESSIVE_MOTION","INSUFFICIENT_FEATURES","CAMERA_UNAVAILABLE"};
+        bytes[4]=2; bytes[38]=1;
+        for(uint8_t reason=0;reason<6;++reason) {
+            ++bytes[8]; timestamp+=10000000;
+            for(int i=0;i<8;++i) bytes[24+i]=uint8_t(timestamp>>(8*i));
+            bytes[92]=reason; send();
+            waitFor([&](const Stream& s){return s.accepted==uint64_t(reason)+2;});
+            check(receiver.snapshot().latest.trackingFailureReason==reason,"failure reason delivered");
+        }
         check(!receiver.toggleLogging(),"disable CSV");
         auto diagnostic=receiver.diagnostic(); auto end=diagnostic.find(" | CSV");
         check(diagnostic.rfind("CSV: ",0)==0,"CSV filename diagnostic");
         auto path=diagnostic.substr(5,end-5); std::ifstream log(path);
-        std::string line; int lines=0; while(std::getline(log,line)) ++lines;
-        check(lines==5,"CSV header plus four selected-stream packets"); log.close();
+        std::string line; check(bool(std::getline(log,line)),"CSV header");
+        check(line.substr(line.rfind(',')+1)=="tracking_failure_reason","CSV reason column");
+        int rows=0;
+        while(std::getline(log,line)) {
+            check(rows<10,"unexpected CSV row");
+            auto reason=line.substr(line.rfind(',')+1);
+            check(reason==(rows<4?"UNKNOWN":reasons[rows-4]),"CSV reason value");
+            ++rows;
+        }
+        check(rows==10,"CSV legacy samples plus all six failure reasons"); log.close();
         std::filesystem::remove(path); // Only the test-owned file returned by this receiver.
         closesocket(sender);
         std::cout<<"UDP loopback, duplicates, gaps, malformed input, session lock/reset, recenter revision and CSV passed\n";

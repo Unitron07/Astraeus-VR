@@ -57,8 +57,9 @@ class ArCoreTracker(private val session: Session,
                 // Never apply a pending recenter to a later, unexpected location.
                 recenter.set(false)
             }
-            sample(PoseSample(sequence++,sessionId,frame.timestamp,origin.revision,state,pose,v),
-                "${camera.trackingState} / ${camera.trackingFailureReason}")
+            val reason = camera.trackingFailureReason
+            sample(PoseSample(sequence++,sessionId,frame.timestamp,origin.revision,state,pose,v,
+                failureReasonCode(reason)), "${camera.trackingState} / $reason")
         } catch (e: Exception) {
             failed = true
             error("ARCore error: ${e.javaClass.simpleName}: ${e.message}")

@@ -15,7 +15,19 @@ int main(int argc,char** argv) {
         check(p->sequence==42 && p->session==7 && p->timestamp==1000000000);
         check(p->position[0]==1 && p->position[1]==2 && p->position[2]==-3 && p->orientation[3]==1);
         for(size_t n=0;n<96;++n) check(!astraeus::decode(b.data(),n));
-        auto bad=b; bad[4]=2; check(!astraeus::decode(bad.data(),bad.size()));
+        check(p->trackingFailureReason==255);
+        check(std::string(astraeus::trackingFailureName(p->trackingFailureReason))=="UNKNOWN");
+        const char* reasons[]={"NONE","BAD_STATE","INSUFFICIENT_LIGHT","EXCESSIVE_MOTION","INSUFFICIENT_FEATURES","CAMERA_UNAVAILABLE"};
+        for(uint8_t reason=0;reason<6;++reason) {
+            auto v2=b; v2[4]=2; v2[38]=1; v2[92]=reason;
+            auto paused=astraeus::decode(v2.data(),v2.size()); check(bool(paused));
+            check(paused->state==1 && paused->trackingFailureReason==reason);
+            check(std::string(astraeus::trackingFailureName(paused->trackingFailureReason))==reasons[reason]);
+        }
+        auto bad=b; bad[4]=3; check(!astraeus::decode(bad.data(),bad.size()));
+        bad=b; bad[4]=2; bad[92]=6; check(!astraeus::decode(bad.data(),bad.size()));
+        bad[92]=255; check(astraeus::decode(bad.data(),bad.size())->trackingFailureReason==255);
+        bad[93]=1; check(!astraeus::decode(bad.data(),bad.size()));
         bad=b; bad[55]=0x7f; bad[54]=0xc0; check(!astraeus::decode(bad.data(),bad.size()));
         bad=b; bad[92]=1; check(!astraeus::decode(bad.data(),bad.size()));
         bad=b; bad[67]=0; check(!astraeus::decode(bad.data(),bad.size()));

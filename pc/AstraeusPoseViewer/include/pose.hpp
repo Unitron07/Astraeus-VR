@@ -10,6 +10,7 @@ struct Pose {
     uint32_t sequence{}, device{}, revision{};
     uint64_t session{}, timestamp{};
     uint8_t type{}, source{}, state{}, flags{};
+    uint8_t trackingFailureReason=255;
     std::array<float,3> position{}, linear{}, angular{};
     std::array<float,4> orientation{0,0,0,1};
 };
@@ -19,12 +20,14 @@ inline uint64_t integer(const uint8_t* p, int bytes) {
     return value;
 }
 inline std::optional<Pose> decode(const uint8_t* b, size_t n) {
-    if(n!=96 || std::memcmp(b,"ASTR",4) || b[4]!=1 || b[5]!=1 || integer(b+6,2)!=96) return {};
-    if(b[36]<1 || b[36]>4 || b[37]!=1 || b[38]>2 || (b[39]&~3) || integer(b+92,4)) return {};
+    if(n!=96 || std::memcmp(b,"ASTR",4) || (b[4]!=1 && b[4]!=2) || b[5]!=1 || integer(b+6,2)!=96) return {};
+    if(b[36]<1 || b[36]>4 || b[37]!=1 || b[38]>2 || (b[39]&~3) || integer(b+93,3)) return {};
+    if(b[4]==1 ? b[92]!=0 : (b[92]>5 && b[92]!=255)) return {};
     Pose p;
     p.sequence=uint32_t(integer(b+8,4)); p.device=uint32_t(integer(b+12,4));
     p.session=integer(b+16,8); p.timestamp=integer(b+24,8); p.revision=uint32_t(integer(b+32,4));
     p.type=b[36]; p.source=b[37]; p.state=b[38]; p.flags=b[39];
+    p.trackingFailureReason=b[4]==2?b[92]:255;
     size_t offset=40;
     auto floats=[&](auto& fields) {
         for(auto& f:fields) {
@@ -41,5 +44,16 @@ inline std::optional<Pose> decode(const uint8_t* b, size_t n) {
 }
 inline const char* trackingName(uint8_t state) {
     return state==2?"TRACKING":state==1?"PAUSED":"STOPPED";
+}
+inline const char* trackingFailureName(uint8_t reason) {
+    switch(reason) {
+    case 0: return "NONE";
+    case 1: return "BAD_STATE";
+    case 2: return "INSUFFICIENT_LIGHT";
+    case 3: return "EXCESSIVE_MOTION";
+    case 4: return "INSUFFICIENT_FEATURES";
+    case 5: return "CAMERA_UNAVAILABLE";
+    default: return "UNKNOWN";
+    }
 }
 }

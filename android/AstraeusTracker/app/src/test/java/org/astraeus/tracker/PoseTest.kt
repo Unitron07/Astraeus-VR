@@ -35,8 +35,26 @@ class PoseTest {
     @Test fun matchesIndependentBinaryFixture() {
         val fixture = javaClass.getResource("/golden_pose.hex")!!.readText().filterNot { it.isWhitespace() }
             .chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        fixture[4] = 2 // v2 reuses the v1 layout and adds NONE at byte 92.
         val encoded = PosePacket.encode(PoseSample(42,7,1000000000,0,2,RigidPose(Vec3(1f,2f,-3f))))
         assertArrayEquals(fixture,encoded)
+    }
+    @Test fun encodesAllArCoreFailureReasonsWithStableIds() {
+        val reasons = listOf(
+            com.google.ar.core.TrackingFailureReason.NONE,
+            com.google.ar.core.TrackingFailureReason.BAD_STATE,
+            com.google.ar.core.TrackingFailureReason.INSUFFICIENT_LIGHT,
+            com.google.ar.core.TrackingFailureReason.EXCESSIVE_MOTION,
+            com.google.ar.core.TrackingFailureReason.INSUFFICIENT_FEATURES,
+            com.google.ar.core.TrackingFailureReason.CAMERA_UNAVAILABLE)
+        reasons.forEachIndexed { id, reason ->
+            assertEquals(id, failureReasonCode(reason))
+            val bytes = PosePacket.encode(PoseSample(42,7,1000000000,0,1,RigidPose(),
+                trackingFailureReason=failureReasonCode(reason)))
+            assertEquals(2,bytes[4].toInt())
+            assertEquals(id,bytes[92].toInt())
+            assertArrayEquals(byteArrayOf(0,0,0),bytes.copyOfRange(93,96))
+        }
     }
     @Test fun angularVelocityUsesShortestArcAndOriginAxes() {
         val v = VelocityEstimator()

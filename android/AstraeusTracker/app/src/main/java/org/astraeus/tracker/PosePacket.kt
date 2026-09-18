@@ -4,18 +4,21 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 data class PoseSample(val sequence: Int, val session: Long, val timestamp: Long,
-    val revision: Int, val state: Int, val pose: RigidPose, val velocity: Velocity = Velocity())
+    val revision: Int, val state: Int, val pose: RigidPose, val velocity: Velocity = Velocity(),
+    val trackingFailureReason: Int = 0)
 
 object PosePacket {
     fun encode(s: PoseSample): ByteArray {
         val b = ByteBuffer.allocate(96).order(ByteOrder.LITTLE_ENDIAN)
-        b.put(byteArrayOf(65,83,84,82)).put(1).put(1).putShort(96)
+        require(s.trackingFailureReason in 0..5 || s.trackingFailureReason == 255)
+        b.put(byteArrayOf(65,83,84,82)).put(2).put(1).putShort(96)
         b.putInt(s.sequence).putInt(0).putLong(s.session).putLong(s.timestamp).putInt(s.revision)
         b.put(1).put(1).put(s.state.toByte()).put(s.velocity.flags.toByte())
         fun vector(v: Vec3) { b.putFloat(v.x).putFloat(v.y).putFloat(v.z) }
         vector(s.pose.p)
         with(s.pose.q) { b.putFloat(x).putFloat(y).putFloat(z).putFloat(w) }
-        vector(s.velocity.linear); vector(s.velocity.angular); b.putInt(0)
+        vector(s.velocity.linear); vector(s.velocity.angular)
+        b.put(s.trackingFailureReason.toByte()).put(0).put(0).put(0)
         return b.array()
     }
 }

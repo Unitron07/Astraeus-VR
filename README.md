@@ -10,6 +10,12 @@ and opt-in logging. No streaming, VR runtime driver or controllers are implement
 Physical S24 measurements are still required. See [validation](docs/validation.md)
 for build/test results and [test procedure](docs/testing.md) for hardware work.
 
+The viewer and CSV include `tracking_failure_reason`: NONE, BAD_STATE,
+INSUFFICIENT_LIGHT, EXCESSIVE_MOTION, INSUFFICIENT_FEATURES or CAMERA_UNAVAILABLE.
+Update both apps for protocol v2. The new viewer accepts older v1 trackers but
+reports UNKNOWN for their missing failure reason. CSV adds the named reason as
+its last column; NONE during PAUSED can mean normal initialization.
+
 ## Architecture
 
 `Galaxy S24 -> ARCore -> origin transform -> binary pose -> UDP -> Windows viewer`
@@ -103,6 +109,9 @@ Windows x64 distribution. Run from repository root, replacing the compiler path:
 The script builds a statically linked executable and runs both C++ tests. The
 executable is in `pc/AstraeusPoseViewer/build/`. To select another UDP port, pass
 it as the sole argument, for example `AstraeusPoseViewer.exe 5000`.
+If a running viewer locks that output file, build with
+`-OutputDirectory build/tracking-reasons` and close the old viewer before starting
+the new executable on the same port.
 
 ## First tracking run
 

@@ -1,4 +1,4 @@
-# Astraeus pose protocol v1
+# Astraeus pose protocol v2 (with v1 receiver compatibility)
 
 One UDP datagram = exactly 96 bytes. Default destination port 4242. All integers
 are unsigned little-endian; floats are IEEE-754 binary32 little-endian. No native
@@ -8,7 +8,7 @@ encryption, retransmission or clock synchronization: use a trusted local network
 | Offset | Type | Meaning |
 |---:|---|---|
 | 0 | byte[4] | ASCII `ASTR` |
-| 4 | u8 | version = 1 |
+| 4 | u8 | version = 2; receiver also accepts legacy 1 |
 | 5 | u8 | packet type = 1 (pose) |
 | 6 | u16 | length = 96 |
 | 8 | u32 | sequence; increments per sample, wraps modulo 2^32 |
@@ -24,12 +24,35 @@ encryption, retransmission or clock synchronization: use a trusted local network
 | 52 | f32[4] | unit quaternion XYZW, local device to origin space |
 | 68 | f32[3] | linear velocity XYZ, meters/sec, origin space |
 | 80 | f32[3] | angular velocity XYZ, radians/sec, origin space |
-| 92 | u32 | reserved, zero |
+| 92 | u8 | tracking_failure_reason (v2); reserved zero in v1 |
+| 93 | byte[3] | reserved, zero |
+
+Failure reason IDs are explicitly mapped, not ARCore enum ordinals:
+
+| ID | tracking_failure_reason |
+|---:|---|
+| 0 | NONE |
+| 1 | BAD_STATE |
+| 2 | INSUFFICIENT_LIGHT |
+| 3 | EXCESSIVE_MOTION |
+| 4 | INSUFFICIENT_FEATURES |
+| 5 | CAMERA_UNAVAILABLE |
+| 255 | UNKNOWN (unrecognized source reason or unavailable in legacy v1) |
+
+IDs 6–254 are reserved and rejected in v2. The viewer and CSV use the names above.
+`NONE` while PAUSED can indicate normal initialization; it does not imply TRACKING.
+See [ARCore TrackingFailureReason](https://developers.google.com/ar/reference/java/com/google/ar/core/TrackingFailureReason).
+New Android builds send v2. Update the PC viewer too: old v1 viewers reject v2.
+New viewers accept v1 but display/log `UNKNOWN`, never assume its reserved zero is
+an actual `NONE` measurement. CSV appends `tracking_failure_reason` after `accepted`
+to preserve existing column positions. This field reports the camera reason from
+each available ARCore frame; no frame means no new reason sample. Fatal camera
+exceptions still stop the tracker and surface as Android errors/PC stream staleness.
 
 Unavailable velocities are zero with validity bits clear. Pose fields on PAUSED
 or STOPPED are identity placeholders, not measurements. Receivers must not move
 the visualized device using invalid poses. Float fields must be finite; quaternion
-norm must be within 0.01 of one. Reserved fields/bits must be zero in v1.
+norm must be within 0.01 of one. Reserved fields/bits must be zero in both versions.
 
 The sample timestamp belongs to the camera frame, not send time. Sequence gaps
 include local sender queue drops. Session IDs distinguish restarts. Compare
@@ -51,6 +74,6 @@ no longer align with gravity. This is intentional, not yaw-only recentering.
 Physical camera pose is used, independent of display rotation. Camera-to-eye and
 phone mount calibration remain future work.
 
-See `golden_pose.hex` for a cross-language fixture: seq=42, device=0, session=7,
+See `golden_pose.hex` for a legacy v1 cross-language fixture: seq=42, device=0, session=7,
 timestamp=1000000000, origin=0, headset/ARCore/TRACKING, no velocities,
 position=(1,2,-3), quaternion=(0,0,0,1).

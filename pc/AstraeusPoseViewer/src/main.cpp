@@ -32,6 +32,7 @@ static LRESULT CALLBACK windowProc(HWND window,UINT message,WPARAM wParam,LPARAM
         text<<"Sequence gaps: "<<s.missing<<" | Duplicate/old: "<<s.outOfOrder<<" | Invalid: "<<s.invalid<<" | Other streams: "<<s.foreign<<"\r\n";
         text<<"Receive age: "<<age*1000<<" ms | Interarrival jitter: "<<s.jitterMs<<" ms | One-way latency: unavailable\r\n";
         text<<"Phone timestamp: "<<s.latest.timestamp<<" ns | Sequence: "<<s.latest.sequence<<" | "<<trackingName(s.latest.state)<<"\r\n";
+        text<<"tracking_failure_reason: "<<trackingFailureName(s.latest.trackingFailureReason)<<"\r\n";
         text<<"Position XYZ (m): "; for(auto x:s.latest.position) text<<x<<"  "; text<<"\r\nQuaternion XYZW: ";
         for(auto x:s.latest.orientation) { text<<x<<"  "; }
         text<<"\r\nLinear velocity (m/s): ";

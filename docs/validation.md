@@ -1,5 +1,16 @@
 # Validation record — 2026-09-16
 
+## Tracking failure reasons update — 2026-09-17
+
+Android debug build, seven JVM tests and lint passed (zero lint errors; existing
+14 warnings remain). The SDK enum fallback also emits a non-blocking redundant
+`else` compiler warning. Windows build passed 139 protocol checks and real UDP/CSV
+integration tests covering all six failure names, plus legacy v1 UNKNOWN behavior.
+The Windows output for this run is `pc/AstraeusPoseViewer/build/tracking-reasons/`
+because the previous viewer executable was running. Close the old viewer before
+launching the new one on the same port. Reinstall the rebuilt APK as well.
+Physical ARCore failure conditions have not been tested on the S24.
+
 ## Local builds
 
 - Windows x64: w64devkit 2.10.0 / GCC 16.2.0, C++17, `-Wall -Wextra -Wpedantic`.

@@ -81,6 +81,13 @@ then run `./scripts/send-synthetic.ps1` from repository root. A generated object
 moves and rotates for 10 seconds on loopback, then becomes stale. This uses
 synthetic poses and is **not tracking evidence**. Reset before connecting the phone.
 
+To check a paused diagnostic and CSV value, run
+`./scripts/send-synthetic.ps1 -TrackingFailureReason INSUFFICIENT_LIGHT`.
+All six documented names are accepted; use `-Paused -TrackingFailureReason NONE`
+to simulate normal initialization. Confirm the viewer's `tracking_failure_reason`
+and the CSV column match. The headset object is hidden while PAUSED. Older v1
+senders produce UNKNOWN because they never transmitted the reason.
+
 Android: from `android/AstraeusTracker`, run
 `./gradlew.bat assembleDebug testDebugUnitTest lintDebug`.
 Tests cover rotated recenter translation/orientation, velocity resets, quaternion
