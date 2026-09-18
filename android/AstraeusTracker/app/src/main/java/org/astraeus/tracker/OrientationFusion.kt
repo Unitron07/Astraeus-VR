@@ -20,14 +20,14 @@ class OrientationFusion {
             (previous.q*rotationVector((omega+value)*(0.5f*(t-timestamp)/1e9f))).normalized()
         timestamp=t; omega=value
         history.addLast(Entry(t,q))
-        while(history.size>2048 || (history.size>2 && t-history.peekFirst().t>2_000_000_000L)) history.removeFirst()
+        while(history.size>2048 || (history.size>2 && t-history.first.t>2_000_000_000L)) history.removeFirst()
         return true
     }
     fun at(t: Long): Quat? {
         val last=history.peekLast() ?: return null
         if(t>=last.t) return if(t-last.t<=20_000_000L)
             (last.q*rotationVector(omega*((t-last.t)/1e9f))).normalized() else null
-        var previous=history.peekFirst()
+        var previous=history.peekFirst() ?: return null
         if(t<previous.t) return null
         for(next in history) {
             if(next.t>=t) {

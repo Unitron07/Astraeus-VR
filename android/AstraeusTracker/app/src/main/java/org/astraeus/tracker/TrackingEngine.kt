@@ -53,9 +53,16 @@ class TrackingEngine(val config: TrackingConfig) {
     private var linearValid = false
     private var reseed = false
     private var forcedLost = false
+    private var gyroTrusted = true
 
-    @Synchronized fun onGyro(t: Long, value: Vec3) = gyro.add(t,value)
+    @Synchronized fun onGyro(t: Long, value: Vec3, trusted: Boolean=true): Boolean {
+        if(t<=gyro.timestamp) return gyro.add(t,value)
+        if(trusted!=gyroTrusted) gyro.reset()
+        gyroTrusted=trusted
+        return gyro.add(t,value)
+    }
     private fun orientation(t: Long): Quat? {
+        if(!gyroTrusted) return null
         val a=anchorGyro ?: return null
         if(anchorGeneration!=gyro.generation) return null
         val b=gyro.at(t) ?: return null
@@ -64,7 +71,9 @@ class TrackingEngine(val config: TrackingConfig) {
     @Synchronized fun onVisual(next: RawArCorePose) {
         val previous=raw
         if(previous!=null && next.frameTimestamp<=previous.frameTimestamp) {
-            anomalies++; forcedLost=true; linearValid=false; return
+            anomalies++
+            if(next.frameTimestamp==previous.frameTimestamp || next.timestamp<=previous.timestamp) return
+            forcedLost=true; linearValid=false
         }
         raw=next; discontinuity=false
         if(!next.clockValid || next.state!=2) { linearValid=false; return }
@@ -73,7 +82,7 @@ class TrackingEngine(val config: TrackingConfig) {
         val dt=if(lastValidTime==0L) 0f else (next.timestamp-lastValidTime)/1e9f
         val mapped=world.compose(next.camera)
         val predictedQ=orientation(next.timestamp)
-        val expectedQ=predictedQ ?: stable.q
+        val expectedQ=predictedQ ?: if(anchored) lastOutput.q else stable.q
         val expected=RigidPose(stable.p,expectedQ)
         innovationPosition=if(anchored) (mapped.p-stable.p).length() else 0f
         innovationAngle=if(anchored) expectedQ.angleTo(mapped.q) else 0f

@@ -3,17 +3,16 @@ package org.astraeus.tracker
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CameraCharacteristics
 import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Build
-import android.os.SystemClock
-import android.util.Log
 import android.view.WindowManager
 import android.view.WindowInsets
 import android.widget.*
 import com.google.ar.core.*
 import java.util.EnumSet
-import java.util.Locale
 
 class MainActivity : Activity() {
     private lateinit var root: LinearLayout
@@ -25,11 +24,18 @@ class MainActivity : Activity() {
     private var session: Session? = null
     private var surface: GLSurfaceView? = null
     private var tracker: ArCoreTracker? = null
+    private var runtime: TrackingRuntime? = null
+    private lateinit var rate: EditText
+    private lateinit var maxSpeed: EditText
+    private lateinit var jumpMeters: EditText
+    private lateinit var jumpDegrees: EditText
+    private lateinit var anchorRate: EditText
+    private lateinit var translationRate: EditText
+    private lateinit var rotationRate: EditText
+    private lateinit var gradual: CheckBox
+    private lateinit var uncalibrated: CheckBox
     @Volatile private var logging = false
     private var installRequested = false
-    private var lastUi = 0L
-    private var frames = 0
-    private var previousSent = 0L
     private var epoch = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,10 +75,30 @@ class MainActivity : Activity() {
         }
         button("Start Tracking") { startTracking() }
         button("Stop Tracking") { stopTracking(); status.text = "Stopped; PC will mark stream stale" }
-        button("Recenter / Set Origin") { tracker?.recenter?.set(true) }
+        button("Recenter / Set Origin") { runtime?.recenter() }
+        root.addView(TextView(this).apply { text="Configuration applies on next Start. Rates are requested, not guaranteed." })
+        fun field(label: String, value: String): EditText {
+            val row=LinearLayout(this)
+            row.addView(TextView(this).apply { text=label },LinearLayout.LayoutParams(360,64))
+            val edit=EditText(this).apply { setText(value); inputType=8194 }
+            row.addView(edit,LinearLayout.LayoutParams(180,72)); root.addView(row)
+            return edit
+        }
+        rate=field("Output Hz (120 or 240)","120")
+        maxSpeed=field("Jump speed threshold (m/s)","8")
+        jumpMeters=field("Minimum jump distance (m)","0.15")
+        jumpDegrees=field("Gyro/AR angle threshold (deg)","35")
+        anchorRate=field("Normal orientation correction (deg/s)","0.5")
+        translationRate=field("Gradual translation cap (m/s)","0.01")
+        rotationRate=field("Gradual rotation cap (deg/s)","0.25")
+        gradual=CheckBox(this).apply { text="Enable gradual world correction (experimental)" }; root.addView(gradual)
+        uncalibrated=CheckBox(this).apply { text="Prefer uncalibrated gyro, subtract reported bias" }; root.addView(uncalibrated)
         root.addView(CheckBox(this).apply {
-            text = "Enable diagnostic Logcat pose logging"
-            setOnCheckedChangeListener { _, checked -> logging = checked }
+            text = "Enable buffered binary pose + raw IMU logging"
+            setOnCheckedChangeListener { _, checked ->
+                logging = checked
+                try { runtime?.setLogging(checked) } catch(e: Exception) { status.text="Log error: ${e.message}" }
+            }
         })
         status = TextView(this).apply { text = "Stopped. Enter PC address, connect, then start."; textSize = 16f }
         root.addView(status)
@@ -99,25 +125,19 @@ class MainActivity : Activity() {
             })
             s.resume()
             val currentEpoch = ++epoch
-            frames = 0; lastUi = SystemClock.elapsedRealtime(); previousSent = transport.sent.get()
-            val renderer = ArCoreTracker(s, { sample, arStatus ->
-                transport.offer(PosePacket.encode(sample))
-                if (logging) Log.i("AstraeusPose", sample.toString())
-                frames++
-                val now = SystemClock.elapsedRealtime()
-                if (now-lastUi >= 250) {
-                    val dt = (now-lastUi)/1000f
-                    val sent = transport.sent.get()
-                    val text = String.format(Locale.US,
-                        "ARCore: %s\nPosition XYZ (m): %.4f  %.4f  %.4f\nQuaternion XYZW: %.4f  %.4f  %.4f  %.4f\nUpdates: %.1f Hz | UDP: %.1f packets/s\n%s\nSequence: %s | Origin: %d | Queue drops: %d\nTimestamp: %d ns | Velocity flags: %d",
-                        arStatus,sample.pose.p.x,sample.pose.p.y,sample.pose.p.z,
-                        sample.pose.q.x,sample.pose.q.y,sample.pose.q.z,sample.pose.q.w,
-                        frames/dt,(sent-previousSent)/dt,transport.status,
-                        Integer.toUnsignedString(sample.sequence),sample.revision,transport.dropped.get(),sample.timestamp,sample.velocity.flags)
-                    runOnUiThread { if(epoch == currentEpoch) status.text = text }
-                    lastUi = now; frames = 0; previousSent = sent
-                }
-            }, { message -> runOnUiThread { if(epoch == currentEpoch) { stopTracking(); status.text = message } } })
+            val characteristics=(getSystemService(CAMERA_SERVICE) as CameraManager).getCameraCharacteristics(s.cameraConfig.cameraId)
+            val realtime=characteristics.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE)==CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
+            fun radians(edit: EditText)=Math.toRadians(edit.text.toString().toDouble()).toFloat()
+            val config=TrackingConfig(rate.text.toString().toInt(),jumpMeters.text.toString().toFloat(),
+                maxSpeed.text.toString().toFloat(),radians(jumpDegrees),radians(anchorRate),gradual.isChecked,
+                translationRate.text.toString().toFloat(),radians(rotationRate))
+            val onError: (String)->Unit = { message -> runOnUiThread {
+                if(epoch==currentEpoch) { stopTracking(); status.text=message }
+            } }
+            val pipeline=TrackingRuntime(this,config,transport,realtime,uncalibrated.isChecked,
+                { text -> runOnUiThread { if(epoch==currentEpoch) status.text=text } },onError)
+            runtime=pipeline; pipeline.setLogging(logging)
+            val renderer=ArCoreTracker(s,pipeline,onError)
             tracker = renderer
             surface = GLSurfaceView(this).apply {
                 setEGLContextClientVersion(2)
@@ -134,6 +154,7 @@ class MainActivity : Activity() {
         surface?.onPause()
         surface?.let { host.removeView(it) }
         surface = null; tracker = null
+        runtime?.close(); runtime=null
         session?.pause(); session?.close(); session = null
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
