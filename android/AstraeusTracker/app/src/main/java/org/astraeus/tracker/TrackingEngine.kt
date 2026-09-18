@@ -127,6 +127,10 @@ class TrackingEngine(val config: TrackingConfig) {
         targetWorld=world; residualPosition=0f; residualAngle=0f
         return true
     }
+    @Synchronized fun sourceUnavailable(reason: Int, now: Long) {
+        raw=raw?.copy(state=1,reason=reason,arrival=now)
+        forcedLost=true; linearValid=false
+    }
     @Synchronized fun output(now: Long): AstraeusPose {
         val source=raw
         val q=orientation(now)

@@ -29,6 +29,7 @@ jobs:
       - run: cmake -S pc/AstraeusPoseViewer -B build/pc -A x64
       - run: cmake --build build/pc --config Release
       - run: ctest --test-dir build/pc -C Release --output-on-failure
+      - run: python -m unittest discover -s scripts -p "test_*.py"
       - uses: actions/upload-artifact@v4
         with:
           name: windows-viewer

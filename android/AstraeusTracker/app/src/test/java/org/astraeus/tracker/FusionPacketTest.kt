@@ -31,4 +31,14 @@ class FusionPacketTest {
             }
         } finally { file.delete() }
     }
+    @Test fun rawFrameLogPreservesClockReasonAndSensorFrame() {
+        val raw=RawArCorePose(10,20,30,1,2,RigidPose(Vec3(1f,2f,3f)),Quat(),true)
+        val packet=FusionPacket.raw(raw)
+        val b=java.nio.ByteBuffer.wrap(packet).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        assertEquals(80,packet.size)
+        assertEquals("ARAW",String(packet.copyOfRange(0,4)))
+        assertEquals(10L,b.getLong(8)); assertEquals(20L,b.getLong(16)); assertEquals(30L,b.getLong(24))
+        assertEquals(1,packet[32].toInt()); assertEquals(2,packet[33].toInt()); assertEquals(1,packet[34].toInt())
+        assertEquals(3f,b.getFloat(44),0f); assertEquals(1f,b.getFloat(76),0f)
+    }
 }

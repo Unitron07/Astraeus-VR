@@ -25,6 +25,7 @@ class TrackingRuntime(private val context: Context, val config: TrackingConfig,
     private var lastCpu=Process.getElapsedCpuTime(); private var cpu=0f
     private var pendingDiscontinuity=false
     private var closed=false
+    private var sourceError=""
     private val imu=AndroidImuSource(context,uncalibrated,{ s -> synchronized(lock) {
         if(!closed && engine.onGyro(s.timestamp,s.value-s.bias,s.accuracy>0)) {
             gyro=s; gyroRate.add(s.timestamp); log?.offer(FusionPacket.imu(s,true))
@@ -42,10 +43,16 @@ class TrackingRuntime(private val context: Context, val config: TrackingConfig,
         val now=SystemClock.elapsedRealtimeNanos()
         val mapped=mapper.map(frame,cameraTimestamp,now)
         arRate.add(frame)
-        engine.onVisual(RawArCorePose(frame,mapped ?: cameraTimestamp,now,state,reason,pose,sensor,mapped!=null))
+        val raw=RawArCorePose(frame,mapped ?: cameraTimestamp,now,state,reason,pose,sensor,mapped!=null)
+        engine.onVisual(raw)
+        log?.offer(FusionPacket.raw(raw))
         pendingDiscontinuity=pendingDiscontinuity || engine.discontinuity
     }
     fun recenter() = synchronized(lock) { engine.recenter(SystemClock.elapsedRealtimeNanos()) }
+    fun sourceFailed(message: String) = synchronized(lock) {
+        sourceError=message+"; Stop/Start to restart ARCore"
+        engine.sourceUnavailable(255,SystemClock.elapsedRealtimeNanos())
+    }
     fun setLogging(enabled: Boolean) {
         val old=synchronized(lock) {
             if(enabled && log==null) log=DiagnosticLog(File(context.getExternalFilesDir(null),"astraeus-$session-${System.currentTimeMillis()}.bin"))
@@ -95,7 +102,7 @@ class TrackingRuntime(private val context: Context, val config: TrackingConfig,
                     engine.discontinuities,engine.lastJump,Math.toDegrees(engine.lastJumpAngle.toDouble()),
                     engine.residualPosition,Math.toDegrees(engine.residualAngle.toDouble()),mapper.valid,mapper.ageNs/1e6,
                     transport.status,transport.dropped.get(),(Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/1048576f,
-                    cpu*100,log?.let { "ON drops=${it.drops.get()} ${it.error}" } ?: "OFF",imu.description)
+                    cpu*100,log?.let { "ON drops=${it.drops.get()} ${it.error}" } ?: "OFF",imu.description+"\n"+sourceError)
             }
         }
         text?.let(ui)

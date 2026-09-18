@@ -41,6 +41,13 @@ object FusionPacket {
         b.put(s.trackingFailureReason.toByte()).put(quality.ordinal.toByte()).putShort(0)
         return b.array()
     }
+    fun raw(s: RawArCorePose): ByteArray = ByteBuffer.allocate(80).order(ByteOrder.LITTLE_ENDIAN).apply {
+        put(byteArrayOf(65,82,65,87)).put(1).put(1).putShort(80)
+        putLong(s.frameTimestamp).putLong(s.timestamp).putLong(s.arrival)
+        put(s.state.toByte()).put(s.reason.toByte()).put(if(s.clockValid) 1 else 0).put(0)
+        pose(s.camera)
+        with(s.sensorOrientation) { putFloat(x).putFloat(y).putFloat(z).putFloat(w) }
+    }.array()
     fun imu(s: ImuSample,gyro: Boolean): ByteArray = ByteBuffer.allocate(48).order(ByteOrder.LITTLE_ENDIAN).apply {
         put(byteArrayOf(65,73,77,85)).put(1).put(if(gyro) 1 else 2).putShort(48)
         putLong(s.timestamp); vector(s.value); vector(s.bias); putInt(s.accuracy); putInt(if(s.uncalibrated) 1 else 0)

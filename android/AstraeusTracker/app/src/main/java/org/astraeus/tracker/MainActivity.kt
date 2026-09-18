@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Build
 import android.view.WindowManager
 import android.view.WindowInsets
+import android.view.View
 import android.widget.*
 import com.google.ar.core.*
 import java.util.EnumSet
@@ -76,12 +77,17 @@ class MainActivity : Activity() {
         button("Start Tracking") { startTracking() }
         button("Stop Tracking") { stopTracking(); status.text = "Stopped; PC will mark stream stale" }
         button("Recenter / Set Origin") { runtime?.recenter() }
-        root.addView(TextView(this).apply { text="Configuration applies on next Start. Rates are requested, not guaranteed." })
+        val settings=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=View.GONE }
+        root.addView(Button(this).apply { text="Show / hide tuning settings"; setOnClickListener {
+            settings.visibility=if(settings.visibility==View.GONE) View.VISIBLE else View.GONE
+        } })
+        root.addView(settings)
+        settings.addView(TextView(this).apply { text="Configuration applies on next Start. Rates are requested, not guaranteed." })
         fun field(label: String, value: String): EditText {
             val row=LinearLayout(this)
-            row.addView(TextView(this).apply { text=label },LinearLayout.LayoutParams(360,64))
+            row.addView(TextView(this).apply { text=label },LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f))
             val edit=EditText(this).apply { setText(value); inputType=8194 }
-            row.addView(edit,LinearLayout.LayoutParams(180,72)); root.addView(row)
+            row.addView(edit,LinearLayout.LayoutParams((100*resources.displayMetrics.density).toInt(),LinearLayout.LayoutParams.WRAP_CONTENT)); settings.addView(row)
             return edit
         }
         rate=field("Output Hz (120 or 240)","120")
@@ -91,8 +97,8 @@ class MainActivity : Activity() {
         anchorRate=field("Normal orientation correction (deg/s)","0.5")
         translationRate=field("Gradual translation cap (m/s)","0.01")
         rotationRate=field("Gradual rotation cap (deg/s)","0.25")
-        gradual=CheckBox(this).apply { text="Enable gradual world correction (experimental)" }; root.addView(gradual)
-        uncalibrated=CheckBox(this).apply { text="Prefer uncalibrated gyro, subtract reported bias" }; root.addView(uncalibrated)
+        gradual=CheckBox(this).apply { text="Enable gradual world correction (experimental)" }; settings.addView(gradual)
+        uncalibrated=CheckBox(this).apply { text="Prefer uncalibrated gyro, subtract reported bias" }; settings.addView(uncalibrated)
         root.addView(CheckBox(this).apply {
             text = "Enable buffered binary pose + raw IMU logging"
             setOnCheckedChangeListener { _, checked ->
@@ -137,7 +143,7 @@ class MainActivity : Activity() {
             val pipeline=TrackingRuntime(this,config,transport,realtime,uncalibrated.isChecked,
                 { text -> runOnUiThread { if(epoch==currentEpoch) status.text=text } },onError)
             runtime=pipeline; pipeline.setLogging(logging)
-            val renderer=ArCoreTracker(s,pipeline,onError)
+            val renderer=ArCoreTracker(s,pipeline) { message -> pipeline.sourceFailed(message) }
             tracker = renderer
             surface = GLSurfaceView(this).apply {
                 setEGLContextClientVersion(2)

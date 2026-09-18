@@ -66,6 +66,24 @@ int main(int argc,char** argv) {
         check(rows==10,"CSV legacy samples plus all six failure reasons"); log.close();
         std::filesystem::remove(path); // Only the test-owned file returned by this receiver.
         std::filesystem::remove(path.substr(0,path.size()-4)+"-diagnostics.csv");
+        auto load=[&](const char* name) {
+            std::ifstream in(std::filesystem::path(argv[1]).parent_path()/name);
+            check(bool(in),"fusion fixture missing"); bytes.clear();
+            while(in>>h) bytes.push_back(uint8_t(std::stoul(h,nullptr,16)));
+        };
+        receiver.reset(); check(receiver.toggleLogging(),"enable fusion CSV");
+        load("golden_fused.hex"); send(); waitFor([](const Stream& s){return s.accepted==1;});
+        load("golden_diagnostics.hex"); send(); waitFor([](const Stream& s){return s.diagnosticsReceived==1;});
+        check(receiver.snapshot().latest.quality==3,"public recovering quality");
+        check(receiver.snapshot().diagnostics.world.position[0]==-1,"world compensation diagnostic");
+        check(!receiver.toggleLogging(),"close fusion CSV");
+        diagnostic=receiver.diagnostic(); end=diagnostic.find(" | CSV"); path=diagnostic.substr(5,end-5);
+        auto diagnosticPath=path.substr(0,path.size()-4)+"-diagnostics.csv";
+        std::ifstream fusionLog(diagnosticPath); std::string header, data;
+        check(bool(std::getline(fusionLog,header)) && bool(std::getline(fusionLog,data)),"fusion diagnostic CSV rows");
+        check(header.find("raw_px")!=std::string::npos && header.find("fused_qw")!=std::string::npos,"raw/fused columns");
+        check(data.find("RECOVERING")!=std::string::npos,"logged quality");
+        fusionLog.close(); std::filesystem::remove(path); std::filesystem::remove(diagnosticPath);
         closesocket(sender);
         std::cout<<"UDP loopback, duplicates, gaps, malformed input, session lock/reset, recenter revision and CSV passed\n";
         return 0;

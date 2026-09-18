@@ -9,3 +9,5 @@
 *.log
 *.apk
 *.exe
+*.bin
+__pycache__/

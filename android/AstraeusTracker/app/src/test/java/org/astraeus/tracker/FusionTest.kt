@@ -138,4 +138,44 @@ class FusionTest {
         close(rotationVector(w*0.1f),e.output(start+100_000_000L).pose.q)
         assertEquals(0,e.discontinuities)
     }
+    @Test fun sequentialRotationsAreNonCommutative() {
+        val f=OrientationFusion(); val x=Vec3(PI.toFloat(),0f,0f); val y=Vec3(0f,PI.toFloat(),0f)
+        for(i in 0..100) f.add(start+i*5_000_000L,x)
+        f.add(start+500_000_001L,y)
+        for(i in 1..100) f.add(start+500_000_001L+i*5_000_000L,y)
+        close(rotationVector(x*0.5f)*rotationVector(y*0.5f),f.at(start+1_000_000_001L)!!)
+    }
+    @Test fun gyroAccuracyLossInvalidatesVelocityUntilReanchored() {
+        val e=seeded(); e.onGyro(start+10_000_000L,Vec3(0f,1f,0f),false)
+        val out=e.output(start+10_000_000L)
+        assertEquals(TrackingQuality.DEGRADED,out.quality); assertEquals(0,out.velocity.flags and 2)
+        e.onGyro(start+20_000_000L,Vec3(),true)
+        e.onVisual(visual(start+20_000_000L))
+        assertEquals(TrackingQuality.FULL_6DOF,e.output(start+20_000_000L).quality)
+    }
+    @Test fun gradualRotationIsCappedAndRecenterCancelsPendingCorrection() {
+        val rate=0.01f
+        val e=seeded(TrackingConfig(gradualCorrection=true,translationRate=0f,rotationRate=rate,anchorRadiansPerSecond=0f))
+        e.onVisual(visual(start+1,state=1))
+        val shift=RigidPose(q=rotationVector(Vec3(0f,0.4f,0f)))
+        e.onGyro(start+33_000_000L,Vec3()); e.onVisual(visual(start+33_000_000L,shift))
+        val before=e.residualAngle
+        e.onGyro(start+66_000_000L,Vec3()); e.onVisual(visual(start+66_000_000L,shift))
+        assertEquals(before-rate*0.033f,e.residualAngle,1e-5f)
+        assertTrue(e.recenter(start+66_000_000L))
+        close(Quat(),e.output(start+66_000_000L).pose.q)
+        assertEquals(0f,e.residualAngle,1e-6f)
+    }
+    @Test fun recoverySettlesAndPublicOrientationUpdatesBetweenVisualFrames() {
+        val w=Vec3(0f,1f,0f); val e=seeded(omega=w)
+        e.onVisual(visual(start+1,state=1))
+        for(i in 1..200) {
+            val t=start+i*5_000_000L; e.onGyro(t,w)
+            if(i%6==0) e.onVisual(visual(t,RigidPose(q=rotationVector(w*(i*0.005f)))))
+            val output=e.output(t)
+            if(i>6) assertTrue(output.pose.q.angleTo(Quat())>0)
+        }
+        assertEquals(TrackingQuality.FULL_6DOF,e.output(start+1_000_000_000L).quality)
+        assertEquals(1,e.discontinuities)
+    }
 }
