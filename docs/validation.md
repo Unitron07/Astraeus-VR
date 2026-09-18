@@ -1,5 +1,46 @@
 # Validation record — 2026-09-16
 
+## Milestone 1.5 — 2026-09-18
+
+Android 0.1.5 debug APK assembled successfully with the pinned toolchain. All
+**28 JVM tests** passed (17 fusion/state-machine, 4 packet/log, 7 existing pose/
+transport tests). Lint passed with **zero errors, 22 warnings**; remaining warnings
+cover diagnostic UI strings/layout, SDK/library updates and application metadata.
+No Android compiler warnings appeared in the final build.
+
+Windows x64 GCC 16.2 build passed with `-Wall -Wextra -Wpedantic` and no compiler
+warnings. All three test executables passed: 139 legacy protocol checks, real UDP
+receiver/CSV integration including v3 diagnostics, and v3 independent fixtures,
+malformed packet rejection, stream ordering and diagnostics CSV. Python binary
+log conversion tests passed (2 tests, including raw-frame/IMU conversion and
+truncation rejection). Git whitespace checks passed.
+
+Fusion tests cover signed yaw/pitch/roll, quaternion normalization/sign equivalence,
+combined and sequential rotations, sensor-frame conversion, timestamp anomalies,
+delayed visual measurement alignment, brief loss with continuing rotation, held
+position, recovery/jump compensation, fast legitimate motion, recenter, gradual
+translation/rotation limits, gyro accuracy loss and recovery quality transitions.
+These are deterministic synthetic tests, not measurements of the S24.
+
+Windows GUI was opened with synthetic UDP fixtures. Numerical diagnostics and
+the raw cyan/public purple objects were visible, and the view-mode button changed
+its selected mode. Fixture rate values are synthetic and prove no sensor rate.
+Android UI and sensor/lifecycle behavior still require on-device testing.
+
+Artifacts: `android/AstraeusTracker/app/build/outputs/apk/debug/app-debug.apk` and
+`pc/AstraeusPoseViewer/build/milestone-1.5/AstraeusPoseViewer.exe`.
+See [testing](testing.md) for installation and the exact A–D physical sequence.
+Earlier user-reported raw-tracker measurements are in
+[observations](milestone-1.5-observations.md), separate from this validation.
+
+Ready for Milestone 1.5 physical testing, not physical acceptance. Actual gyro
+rates/accuracy, camera/IMU clock compatibility and exposure alignment, mount axes,
+false-positive/negative thresholds, drift, latency, thermal behavior and logging
+overhead remain unmeasured for this implementation. There is no acceleration
+position integration. Continuity compensation intentionally trades absolute
+world alignment for a continuous output; slow map corrections may pass through.
+No SteamVR/OpenXR driver or video work has begun. Historical results follow.
+
 ## Tracking failure reasons update — 2026-09-17
 
 Android debug build, seven JVM tests and lint passed (zero lint errors; existing

@@ -1,4 +1,105 @@
-# Astraeus pose protocol v2 (with v1 receiver compatibility)
+# Astraeus protocols: v3 fusion, legacy v1/v2
+
+## Milestone 1.5: v3
+
+Android-only log records also include `ARAW` (80 bytes, version 1, type 1).
+Offsets: magic 0, version/type 4/5, u16 size 6; u64 frame/camera/arrival timestamps
+8/16/24; u8 state/reason/clock-valid/reserved 32/33/34/35; camera XYZ+XYZW at 36;
+Android sensor XYZW at 64. Poses are invalid when state is not TRACKING. These
+records retain every delivered unique ARCore frame and are not sent over UDP.
+
+The new tracker emits v3. The viewer still accepts v1/v2 without changing their
+meaning or golden fixture. Old viewers reject v3; update both apps.
+Little-endian fixed-width integers and IEEE-754 binary32 remain unchanged.
+UDP port, endpoint/session locking and the one-slot freshness-first sender remain.
+
+### Public pose: type 1, 112 bytes
+
+Bytes 0–91 retain the field offsets in the legacy table below, with version=3 and
+length=112. Position/quaternion now mean **public Astraeus fused pose**, not raw
+ARCore. Timestamp at 24 is Android elapsedRealtimeNanos at output evaluation.
+This is the time of an estimate, not a fabricated camera/IMU measurement timestamp.
+Position is held between valid visual measurements. Orientation integrates actual
+gyro samples and extrapolates at most 20 ms using the latest angular velocity.
+After that, orientation holds and quality becomes DEGRADED. No accelerometer
+position integration is used. Angular velocity is in recentered Astraeus world
+coordinates. Linear velocity is a visual finite difference, valid only across
+ordinary consecutive visual samples; corrections/loss/recenter invalidate it.
+
+| Offset | Type | v3 meaning |
+|---:|---|---|
+| 92 | u8 | ARCore failure reason, same explicit IDs as v2 |
+| 93 | u8 | Astraeus quality: 0 UNAVAILABLE, 1 FULL_6DOF, 2 INERTIAL_ONLY, 3 RECOVERING, 4 DEGRADED |
+| 94 | u16 | reserved zero |
+| 96 | u64 | latest integrated gyro measurement timestamp, Android boot-time ns; zero if absent |
+| 104 | u64 | latest source Android camera timestamp, not necessarily a valid tracking pose |
+
+ARCore source state at 38 is independent of Astraeus quality. PAUSED packets can
+carry useful orientation and held position. Do not hide a v3 pose merely because
+ARCore is paused. UNAVAILABLE means no valid world anchor exists; DEGRADED means
+the held/partially tracked estimate must not be mistaken for healthy 6DoF.
+Source clock validity is in diagnostics. Unknown quality/flags are rejected.
+
+### Layer diagnostics: type 2, 352 bytes, at most 10 Hz
+
+Common header 0–39 has version=3, type=2, length=352 and the **same sequence,
+session, output timestamp and origin revision** as its accompanying public packet.
+It does not consume another pose sequence number. It includes its own output
+pose, so log analysis does not depend on both datagrams arriving together.
+The two datagrams are offered as one item to the existing single-slot queue.
+Diagnostic loss is allowed; counters/residuals remain in subsequent snapshots.
+
+| Offset | Type | Meaning |
+|---:|---|---|
+| 40 | u64 | original ARCore Frame.timestamp (undefined ARCore clock domain) |
+| 48 | u64 | paired Android camera timestamp |
+| 56 | u64 | latest gyro timestamp |
+| 64 | u64 | latest accelerometer timestamp |
+| 72 | f32[7] | raw ARCore camera XYZ + XYZW; invalid placeholder unless source state=TRACKING |
+| 100 | f32[7] | raw camera transformed by user recenter ONLY, for the comparison drawing |
+| 128 | f32[7] | persistent world transform W: Astraeus-from-ARCore |
+| 156 | f32[7] | user recenter transform U: user-from-Astraeus |
+| 184 | f32[3] | raw gyro sensor XYZ rad/s |
+| 196 | f32[3] | reported gyro bias XYZ rad/s, zero if calibrated source |
+| 208 | f32[3] | accelerometer XYZ m/s² including gravity, sensor space |
+| 220 | f32[4] | measured gyro, accel, ARCore and output Hz |
+| 236 | f32 | position innovation meters |
+| 240 | f32 | orientation innovation radians vs timestamp-aligned gyro estimate |
+| 244 | f32 | implied raw mapped translation speed m/s |
+| 248 | f32[2] | remaining correction: position meters, angle radians |
+| 256 | f32[2] | last compensated jump: position meters, angle radians |
+| 264 | u32 | count of compensated discontinuities/reacquisitions |
+| 268 | i32 | latest gyro accuracy (-1 absent, Android 0–3 otherwise) |
+| 272 | i32 | latest accel accuracy |
+| 276 | u8 | camera clock compatibility/checks valid (0/1) |
+| 277 | u8 | gyro is uncalibrated; bias is subtracted for fusion (0/1) |
+| 278 | u8 | discontinuity since previous diagnostic emission (0/1) |
+| 279 | u8 | quality (same as 349) |
+| 280 | i64 | paired camera timestamp minus ARCore frame timestamp, ns |
+| 288 | i64 | camera timestamp age at source callback arrival, ns |
+| 296 | u32 | gyro timestamp/value anomaly count |
+| 300 | u32 | tracking timestamp anomaly count |
+| 304 | u32 | clock-check anomaly count |
+| 308 | u32 | Android binary logging drops in current enabled log |
+| 312 | f32 | Java heap in use, MiB (not process RSS) |
+| 316 | f32 | process CPU seconds / elapsed seconds; 1.0 = one core |
+| 320 | f32[7] | public output XYZ + XYZW at header timestamp |
+| 348 | u8 | ARCore failure reason |
+| 349 | u8 | Astraeus quality |
+| 350 | u16 | reserved zero |
+
+All pose quaternions must be unit length within 0.01, and all floats finite.
+Rate/clock/IMU fields are snapshots, not guarantees about sustained device behavior.
+The receiver validates exact lengths, IDs and finite values, selects the already
+locked public stream, and rejects old/duplicate diagnostics separately. Diagnostic
+packets never inflate public packet counts/gaps. Source IMU timestamps preserve
+their original ns values; raw gyro data is not resampled to display cadence.
+
+Fixtures `golden_fused.hex` and `golden_diagnostics.hex` are independently assembled
+reference bytes consumed by Kotlin, C++ and Python tests. `golden_pose.hex` remains
+the original v1 fixture.
+
+## Legacy v1/v2 contract
 
 One UDP datagram = exactly 96 bytes. Default destination port 4242. All integers
 are unsigned little-endian; floats are IEEE-754 binary32 little-endian. No native
