@@ -16,6 +16,7 @@ class Receiver {
     std::mutex mutex_;
     Stream stream_;
     std::ofstream log_;
+    std::ofstream diagnosticLog_;
     std::string error_;
     void run();
 public:

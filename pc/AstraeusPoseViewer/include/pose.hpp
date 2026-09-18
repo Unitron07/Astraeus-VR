@@ -11,6 +11,8 @@ struct Pose {
     uint64_t session{}, timestamp{};
     uint8_t type{}, source{}, state{}, flags{};
     uint8_t trackingFailureReason=255;
+    uint8_t quality=0;
+    uint64_t gyroTimestamp=0, visualTimestamp=0;
     std::array<float,3> position{}, linear{}, angular{};
     std::array<float,4> orientation{0,0,0,1};
 };
@@ -20,14 +22,19 @@ inline uint64_t integer(const uint8_t* p, int bytes) {
     return value;
 }
 inline std::optional<Pose> decode(const uint8_t* b, size_t n) {
-    if(n!=96 || std::memcmp(b,"ASTR",4) || (b[4]!=1 && b[4]!=2) || b[5]!=1 || integer(b+6,2)!=96) return {};
-    if(b[36]<1 || b[36]>4 || b[37]!=1 || b[38]>2 || (b[39]&~3) || integer(b+93,3)) return {};
+    if(n<8 || std::memcmp(b,"ASTR",4) || b[5]!=1) return {};
+    bool fusion=b[4]==3;
+    if((fusion ? n!=112 : (n!=96 || (b[4]!=1 && b[4]!=2))) || integer(b+6,2)!=n) return {};
+    if(b[36]<1 || b[36]>4 || b[37]!=1 || b[38]>2 || (b[39]&~3)) return {};
+    if(fusion ? (b[93]>4 || integer(b+94,2)) : integer(b+93,3)!=0) return {};
     if(b[4]==1 ? b[92]!=0 : (b[92]>5 && b[92]!=255)) return {};
     Pose p;
     p.sequence=uint32_t(integer(b+8,4)); p.device=uint32_t(integer(b+12,4));
     p.session=integer(b+16,8); p.timestamp=integer(b+24,8); p.revision=uint32_t(integer(b+32,4));
     p.type=b[36]; p.source=b[37]; p.state=b[38]; p.flags=b[39];
-    p.trackingFailureReason=b[4]==2?b[92]:255;
+    p.trackingFailureReason=b[4]>=2?b[92]:255;
+    p.quality=fusion?b[93]:(p.state==2?1:0);
+    if(fusion) { p.gyroTimestamp=integer(b+96,8); p.visualTimestamp=integer(b+104,8); }
     size_t offset=40;
     auto floats=[&](auto& fields) {
         for(auto& f:fields) {
@@ -54,6 +61,15 @@ inline const char* trackingFailureName(uint8_t reason) {
     case 4: return "INSUFFICIENT_FEATURES";
     case 5: return "CAMERA_UNAVAILABLE";
     default: return "UNKNOWN";
+    }
+}
+inline const char* qualityName(uint8_t quality) {
+    switch(quality) {
+    case 1: return "FULL_6DOF";
+    case 2: return "INERTIAL_ONLY";
+    case 3: return "RECOVERING";
+    case 4: return "DEGRADED";
+    default: return "UNAVAILABLE";
     }
 }
 }

@@ -14,4 +14,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Receiver test build failed' }
     & "$outputPath/receiver_tests.exe" ../../protocol/golden_pose.hex
     if ($LASTEXITCODE -ne 0) { throw 'Receiver tests failed' }
+    & $Compiler -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iinclude tests/fusion_protocol_tests.cpp -o "$outputPath/fusion_protocol_tests.exe" -static
+    if ($LASTEXITCODE -ne 0) { throw 'Fusion protocol build failed' }
+    & "$outputPath/fusion_protocol_tests.exe" ../../protocol
+    if ($LASTEXITCODE -ne 0) { throw 'Fusion protocol tests failed' }
 } finally { Pop-Location }

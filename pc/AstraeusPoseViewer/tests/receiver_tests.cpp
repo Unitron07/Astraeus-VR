@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <stdexcept>
+#include <sstream>
 
 using namespace astraeus;
 static void check(bool value,const char* message) { if(!value) throw std::runtime_error(message); }
@@ -53,16 +54,18 @@ int main(int argc,char** argv) {
         check(diagnostic.rfind("CSV: ",0)==0,"CSV filename diagnostic");
         auto path=diagnostic.substr(5,end-5); std::ifstream log(path);
         std::string line; check(bool(std::getline(log,line)),"CSV header");
-        check(line.substr(line.rfind(',')+1)=="tracking_failure_reason","CSV reason column");
+        check(line.find(",tracking_failure_reason,tracking_quality,")!=std::string::npos,"CSV reason/quality columns");
         int rows=0;
         while(std::getline(log,line)) {
             check(rows<10,"unexpected CSV row");
-            auto reason=line.substr(line.rfind(',')+1);
+            std::istringstream row(line); std::string reason;
+            for(int column=0;column<=22;++column) std::getline(row,reason,',');
             check(reason==(rows<4?"UNKNOWN":reasons[rows-4]),"CSV reason value");
             ++rows;
         }
         check(rows==10,"CSV legacy samples plus all six failure reasons"); log.close();
         std::filesystem::remove(path); // Only the test-owned file returned by this receiver.
+        std::filesystem::remove(path.substr(0,path.size()-4)+"-diagnostics.csv");
         closesocket(sender);
         std::cout<<"UDP loopback, duplicates, gaps, malformed input, session lock/reset, recenter revision and CSV passed\n";
         return 0;
