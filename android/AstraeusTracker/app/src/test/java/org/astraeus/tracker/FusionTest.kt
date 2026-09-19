@@ -8,7 +8,7 @@ class FusionTest {
     private val start=1_000_000_000L
     private fun close(a: Quat,b: Quat,tolerance: Float=0.0001f) = assertTrue("angle ${a.angleTo(b)}",a.angleTo(b)<tolerance)
     private fun visual(t: Long,p: RigidPose=RigidPose(),state: Int=2,reason: Int=0,frame: Long=t) =
-        RawArCorePose(frame,t,t,state,reason,p,p.q,true)
+        RawArCorePose(frame,t,t,state,reason,p,p.q,true,AnchorSample(1,2))
     private fun seeded(config: TrackingConfig=TrackingConfig(),omega: Vec3=Vec3()): TrackingEngine =
         TrackingEngine(config).also { it.onGyro(start,omega); it.onVisual(visual(start)) }
 
@@ -82,6 +82,7 @@ class FusionTest {
     }
     @Test fun gradualTranslationIsCappedAndResidualDecreases() {
         val e=seeded(TrackingConfig(gradualCorrection=true,translationRate=0.01f,rotationRate=0f))
+        e.onVisual(visual(start+1,state=1)) // Only genuine reacquisition can create correction debt.
         e.onGyro(start+33_000_000L,Vec3()); e.onVisual(visual(start+33_000_000L,RigidPose(Vec3(1.5f,0f,0f))))
         val residual=e.residualPosition
         var old=e.output(start+33_000_000L).pose.p

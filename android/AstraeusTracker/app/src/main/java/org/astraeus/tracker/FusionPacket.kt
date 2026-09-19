@@ -10,6 +10,18 @@ data class FusionDiagnostics(val raw: RawArCorePose?, val rawUser: RigidPose,
     val clockAnomalies: Int, val logDrops: Int, val heapMb: Float, val cpu: Float)
 
 object FusionPacket {
+    fun anchorDiagnostics(s: PoseSample,quality: TrackingQuality,d: FusionDiagnostics,e: TrackingEngine): ByteArray {
+        val b=ByteBuffer.allocate(488).order(ByteOrder.LITTLE_ENDIAN)
+        b.put(diagnostics(s,quality,d)); b.put(4,4); b.putShort(6,488)
+        b.pose(e.raw?.anchor?.pose ?: RigidPose()); b.pose(e.cameraAnchor); b.pose(e.alignment)
+        e.steps.forEach { b.putFloat(it) }
+        b.putInt(e.raw?.anchor?.id ?: 0)
+        b.put((e.raw?.anchor?.state ?: 0).toByte()).put(e.event.ordinal.toByte())
+        b.put(e.stepFlags.toByte()).put(0)
+        b.putInt(e.rawWorldUpdates).putInt(e.relativeDiscontinuities).putInt(e.reacquisitions).putInt(e.anchorLosses)
+        b.putInt(e.eventMask)
+        return b.array()
+    }
     private fun header(size: Int,type: Int,s: PoseSample) = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN).apply {
         put(byteArrayOf(65,83,84,82)).put(3).put(type.toByte()).putShort(size.toShort())
         putInt(s.sequence).putInt(0).putLong(s.session).putLong(s.timestamp).putInt(s.revision)

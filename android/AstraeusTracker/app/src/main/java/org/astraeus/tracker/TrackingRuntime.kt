@@ -23,7 +23,8 @@ class TrackingRuntime(private val context: Context, val config: TrackingConfig,
     private var sequence=0
     private var lastOutput=0L; private var lastDiagnostics=0L; private var lastUi=0L
     private var lastCpu=Process.getElapsedCpuTime(); private var cpu=0f
-    private var pendingDiscontinuity=false
+    private var diagnosticSequence=0
+    private var pendingDiagnostic: ByteArray?=null
     private var closed=false
     private var sourceError=""
     private val imu=AndroidImuSource(context,uncalibrated,{ s -> synchronized(lock) {
@@ -39,14 +40,16 @@ class TrackingRuntime(private val context: Context, val config: TrackingConfig,
     init { executor.scheduleAtFixedRate({
         try { tick() } catch(e: Exception) { error("Tracking output failed: ${e.message}") }
     },0,1_000_000_000L/config.outputHz,TimeUnit.NANOSECONDS) }
-    fun visual(frame: Long,cameraTimestamp: Long,state: Int,reason: Int,pose: RigidPose,sensor: Quat) = synchronized(lock) {
+    fun visual(frame: Long,cameraTimestamp: Long,state: Int,reason: Int,pose: RigidPose,sensor: Quat,
+        reference: (Boolean)->AnchorSample) = synchronized(lock) {
         val now=SystemClock.elapsedRealtimeNanos()
         val mapped=mapper.map(frame,cameraTimestamp,now)
         arRate.add(frame)
-        val raw=RawArCorePose(frame,mapped ?: cameraTimestamp,now,state,reason,pose,sensor,mapped!=null)
+        val raw=RawArCorePose(frame,mapped ?: cameraTimestamp,now,state,reason,pose,sensor,mapped!=null,
+            reference(mapped!=null && state==2))
         engine.onVisual(raw)
         log?.offer(FusionPacket.raw(raw))
-        pendingDiscontinuity=pendingDiscontinuity || engine.discontinuity
+        pendingDiagnostic=diagnostic(now) // Every visual frame is logged before UDP freshness selection.
     }
     fun recenter() = synchronized(lock) { engine.recenter(SystemClock.elapsedRealtimeNanos()) }
     fun sourceFailed(message: String) = synchronized(lock) {
@@ -72,22 +75,8 @@ class TrackingRuntime(private val context: Context, val config: TrackingConfig,
                 output.pose,output.velocity,raw?.reason ?: 255)
             val packet=FusionPacket.pose(sample,output.quality,gyro.timestamp,raw?.timestamp ?: 0)
             val batch=mutableListOf(packet); log?.offer(packet)
-            if(now-lastDiagnostics>=100_000_000L) {
-                val processCpu=Process.getElapsedCpuTime()
-                cpu=if(lastDiagnostics==0L) 0f else (processCpu-lastCpu)*1e6f/(now-lastDiagnostics)
-                lastCpu=processCpu; lastDiagnostics=now
-                val arHz=if(raw!=null && now-raw.arrival<1_000_000_000L) arRate.hz else 0f
-                val values=floatArrayOf(gyroRate.at(now),accelRate.at(now),arHz,outputRate.at(now),
-                    engine.innovationPosition,engine.innovationAngle,engine.impliedSpeed,engine.residualPosition,
-                    engine.residualAngle,engine.lastJump,engine.lastJumpAngle)
-                val rt=Runtime.getRuntime()
-                val d=FusionDiagnostics(raw,engine.rawInUserSpace(),engine.world,engine.user,gyro,accel,values,
-                    engine.discontinuities,mapper.valid,pendingDiscontinuity,mapper.offsetNs,mapper.ageNs,
-                    engine.gyro.anomalies,engine.anomalies,mapper.anomalies,log?.drops?.get() ?: 0,
-                    (rt.totalMemory()-rt.freeMemory())/1048576f,cpu)
-                val diagnostic=FusionPacket.diagnostics(sample,output.quality,d)
-                batch.add(diagnostic); log?.offer(diagnostic); pendingDiscontinuity=false
-            }
+            if(pendingDiagnostic==null && now-lastDiagnostics>=100_000_000L) pendingDiagnostic=diagnostic(now)
+            pendingDiagnostic?.let { batch.add(it) }; pendingDiagnostic=null
             transport.offerBatch(batch)
             if(now-lastUi>=250_000_000L) {
                 lastUi=now
@@ -102,10 +91,30 @@ class TrackingRuntime(private val context: Context, val config: TrackingConfig,
                     engine.discontinuities,engine.lastJump,Math.toDegrees(engine.lastJumpAngle.toDouble()),
                     engine.residualPosition,Math.toDegrees(engine.residualAngle.toDouble()),mapper.valid,mapper.ageNs/1e6,
                     transport.status,transport.dropped.get(),(Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/1048576f,
-                    cpu*100,log?.let { "ON drops=${it.drops.get()} ${it.error}" } ?: "OFF",imu.description+"\n"+sourceError)
+                    cpu*100,log?.let { "ON drops=${it.drops.get()} ${it.error}" } ?: "OFF",
+                    "Anchor ${raw?.anchor?.id ?: 0}: ${arCoreStateName(raw?.anchor?.state ?: 0)} | ${engine.event}\n"+
+                    "World updates ${engine.rawWorldUpdates} | relative anomalies ${engine.relativeDiscontinuities} | reacquisitions ${engine.reacquisitions} | anchor losses ${engine.anchorLosses}\n"+imu.description+"\n"+sourceError)
             }
         }
         text?.let(ui)
+    }
+    private fun diagnostic(now: Long): ByteArray {
+        val processCpu=Process.getElapsedCpuTime()
+        cpu=if(lastDiagnostics==0L || now<=lastDiagnostics) 0f else (processCpu-lastCpu)*1e6f/(now-lastDiagnostics)
+        lastCpu=processCpu; lastDiagnostics=now
+        val raw=engine.raw; val output=engine.output(now)
+        val sample=PoseSample(diagnosticSequence++,session,now,engine.revision,raw?.state ?: 0,
+            output.pose,output.velocity,raw?.reason ?: 255)
+        val arHz=if(raw!=null && now-raw.arrival<1_000_000_000L) arRate.hz else 0f
+        val values=floatArrayOf(gyroRate.at(now),accelRate.at(now),arHz,outputRate.at(now),
+            engine.innovationPosition,engine.innovationAngle,engine.impliedSpeed,engine.residualPosition,
+            engine.residualAngle,engine.lastJump,engine.lastJumpAngle)
+        val rt=Runtime.getRuntime()
+        val d=FusionDiagnostics(raw,engine.rawInUserSpace(),engine.world,engine.user,gyro,accel,values,
+            engine.discontinuities,mapper.valid,engine.discontinuity,mapper.offsetNs,mapper.ageNs,
+            engine.gyro.anomalies,engine.anomalies,mapper.anomalies,log?.drops?.get() ?: 0,
+            (rt.totalMemory()-rt.freeMemory())/1048576f,cpu)
+        return FusionPacket.anchorDiagnostics(sample,output.quality,d,engine).also { log?.offer(it) }
     }
     override fun close() {
         synchronized(lock) { closed=true }

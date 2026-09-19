@@ -13,6 +13,17 @@ class ArCoreTracker(private val session: Session, private val runtime: TrackingR
     private val error: (String)->Unit) : GLSurfaceView.Renderer {
     private var lastTimestamp=0L
     private var failed=false
+    private val reference=AnchorReference { pose ->
+        val anchor=session.createAnchor(com.google.ar.core.Pose(
+            floatArrayOf(pose.p.x,pose.p.y,pose.p.z),floatArrayOf(pose.q.x,pose.q.y,pose.q.z,pose.q.w)))
+        object : AnchorHandle {
+            override fun sample(id: Int)=AnchorSample(id,stateCode(anchor.trackingState),rigid(anchor.pose))
+            override fun detach()=anchor.detach()
+        }
+    }
+    private fun stateCode(state: TrackingState)=when(state) { TrackingState.TRACKING -> 2; TrackingState.PAUSED -> 1; else -> 0 }
+    private fun rigid(p: com.google.ar.core.Pose)=RigidPose(Vec3(p.tx(),p.ty(),p.tz()),Quat(p.qx(),p.qy(),p.qz(),p.qw()))
+    fun close()=reference.close() // Called only after the GL surface is paused.
     override fun onSurfaceCreated(gl: GL10?,config: EGLConfig?) {
         val textures=IntArray(1)
         GLES20.glGenTextures(1,textures,0)
@@ -33,7 +44,7 @@ class ArCoreTracker(private val session: Session, private val runtime: TrackingR
             val sensor=if(state==2) frame.androidSensorPose else com.google.ar.core.Pose.IDENTITY
             runtime.visual(frame.timestamp,frame.androidCameraTimestamp,state,failureReasonCode(camera.trackingFailureReason),
                 RigidPose(Vec3(p.tx(),p.ty(),p.tz()),Quat(p.qx(),p.qy(),p.qz(),p.qw())),
-                Quat(sensor.qx(),sensor.qy(),sensor.qz(),sensor.qw()))
+                Quat(sensor.qx(),sensor.qy(),sensor.qz(),sensor.qw())) { healthy -> reference.update(healthy,rigid(p)) }
         } catch(e: Exception) { failed=true; error("ARCore error: ${e.javaClass.simpleName}: ${e.message}") }
     }
 }

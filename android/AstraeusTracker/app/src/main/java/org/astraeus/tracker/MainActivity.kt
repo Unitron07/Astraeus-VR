@@ -158,6 +158,7 @@ class MainActivity : Activity() {
     private fun stopTracking() {
         ++epoch
         surface?.onPause()
+        tracker?.close()
         surface?.let { host.removeView(it) }
         surface = null; tracker = null
         runtime?.close(); runtime=null

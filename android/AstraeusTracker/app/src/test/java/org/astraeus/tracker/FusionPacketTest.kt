@@ -18,6 +18,9 @@ class FusionPacketTest {
             ImuSample(999000000,Vec3(0f,0.5f,0f),accuracy=3),ImuSample(998000000,Vec3(0f,9.81f,0f),accuracy=3),
             floatArrayOf(200f,200f,30f,120f,1f,0.2f,30f,1f,0.2f,1f,0.2f),1,true,true,10,30000000,0,0,0,0,32f,0.1f)
         assertArrayEquals(fixture("golden_diagnostics.hex"),FusionPacket.diagnostics(sample,TrackingQuality.RECOVERING,d))
+        val engine=TrackingEngine(TrackingConfig())
+        engine.onVisual(RawArCorePose(1,1,1,2,0,RigidPose(),Quat(),true,AnchorSample(1,2)))
+        assertArrayEquals(fixture("golden_anchor_diagnostics.hex"),FusionPacket.anchorDiagnostics(sample,TrackingQuality.RECOVERING,d,engine))
     }
     @Test fun binaryLogDrainsAndPreservesRecords() {
         val file=File.createTempFile("astraeus-test", ".bin")
