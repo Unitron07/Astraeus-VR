@@ -1,4 +1,61 @@
-# Astraeus protocols: v3 fusion, legacy v1/v2
+# Astraeus protocols: v3 public pose, v4 anchor diagnostics, legacy v1/v2/v3
+
+## Milestone 1.5.1: public v3 unchanged, diagnostics v4
+
+The public 112-byte v3 pose remains the fused Astraeus pose. Its bytes and velocity
+semantics are unchanged. New diagnostic packets use version **4**, type **2**,
+length **488**. The new viewer accepts both v3/352 and v4/488 diagnostics, rejects
+invalid version/length combinations, and retains v1/v2/v3 public support. Old
+viewers still display public v3 poses but cannot decode v4 diagnostics.
+
+Offsets 0–351 retain the v3 layout below. Header sequence is now independent for
+diagnostics, not the public sequence. Match records by session/time/origin, not by
+equal sequence. The world transform at offset 128 remains raw-world-to-Astraeus,
+now derived as alignment * inverse(anchor_world); it is not a permanent target.
+raw_user remains user * raw camera for legacy visualization only. Innovations and
+residuals in v4 refer to anchor-relative fusion, not debt to raw-world coordinates.
+
+| Offset | Type | Meaning |
+|---:|---|---|
+| 352 | 7 float32 | anchor_world XYZ + XYZW |
+| 380 | 7 float32 | camera_anchor XYZ + XYZW |
+| 408 | 7 float32 | alignment: anchor space to persistent Astraeus space |
+| 436 | 6 float32 | raw-camera-world step m/rad, anchor-world step m/rad, camera-anchor step m/rad |
+| 460 | uint32 | session-local anchor ID; zero before creation |
+| 464 | uint8 | anchor state: 0 absent/STOPPED, 1 PAUSED, 2 TRACKING |
+| 465 | uint8 | event enum below |
+| 466 | uint8 | step validity bits: 1 raw camera, 2 anchor, 4 relative |
+| 467 | uint8 | reserved zero |
+| 468 | uint32 | raw_world_update_count |
+| 472 | uint32 | anchor_relative_discontinuity_count |
+| 476 | uint32 | reacquisition_count, including anchor replacements |
+| 480 | uint32 | anchor_loss_count; transitions from tracked to unusable |
+| 484 | uint32 | event bitmask; bit N for enum N, bit 0 unused |
+
+Event enum: 0 NONE, 1 RAW_WORLD_UPDATE_COMPENSATED, 2 ANCHOR_RELATIVE_DISCONTINUITY,
+3 TRACKING_REACQUISITION, 4 ANCHOR_LOST, 5 CLOCK_ANOMALY, 6 SENSOR_ANOMALY,
+7 ANCHOR_CREATED, 8 ANCHOR_REPLACED. The main enum is the most recent classification
+in that update; the mask retains coincident events. Anchor/relative values must
+not be treated as valid visual measurements unless camera and anchor are TRACKING
+and clock is valid. Relative pose may retain the previous valid sample during loss.
+Step validity additionally requires consecutive valid samples of the same anchor.
+Zero step with validity bit clear means unavailable, not measured zero motion.
+
+Snapshots are produced on every unique visual update, with a 10 Hz fallback
+heartbeat when frames stop. Heartbeats repeat last-frame event/step metadata:
+deduplicate by frame timestamp and anchor ID. Every snapshot is written to the
+optional Android log before network selection. UDP remains freshness-first and
+may drop intermediate snapshots; diagnostic sequence gaps and counters expose
+loss. A complete event reconstruction requires Android logs without queue drops.
+
+PC CSV appends these fields plus diagnostic_version; legacy v3 rows leave the
+anchor extension blank. Python extraction writes v4 to .anchor_diagnostics.csv
+and older v3 to .diagnostics.csv so mixed-schema logs cannot corrupt CSV headers.
+The existing big-endian length envelope also permits the new 488-byte records.
+All packet payloads remain little-endian. The new independent shared fixture is
+golden_anchor_diagnostics.hex; all older golden files are retained unchanged.
+
+The following section describes historical Milestone 1.5 v3 diagnostic semantics.
 
 ## Milestone 1.5: v3
 

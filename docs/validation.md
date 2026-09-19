@@ -1,5 +1,64 @@
 # Validation record — 2026-09-16
 
+## Milestone 1.5.1 — 2026-09-18
+
+Android 0.1.5.1 debug APK built successfully. **36 JVM tests passed**: 8 new
+anchor/reference tests, 17 retained fusion tests, 4 packet/log tests (now checking
+the independent v4 golden fixture), and 7 original pose/transport tests. Lint:
+**0 errors, 22 warnings**, unchanged count from Milestone 1.5. No compiler warnings
+appeared in the final local Android build.
+
+The new tests cover nontrivial shared rigid transforms; the Run #5-style
+0.319 m / 55.7-degree update followed by 300 stationary visual frames with gradual
+correction enabled; genuine relative anomalies; several-second loss with gyro
+rotation and held position; separate reacquisition; recenter; nontrivial replacement
+alignment; three-frame warmup/PAUSED retention/STOPPED detachment; and explicit
+clock/sensor anomaly bits. The shared-update tests assert public continuity,
+FULL_6DOF and zero correction debt. An existing gradual-translation test was
+deliberately changed to trigger same-anchor reacquisition, because rejected
+relative anomalies no longer qualify for gradual payback.
+
+Windows x64 GCC 16.2 build completed without warnings under
+`-Wall -Wextra -Wpedantic`. All three C++ test executables passed: 139 legacy
+protocol checks, real UDP/CSV integration (including v4 anchor event receipt and
+CSV output), and v3/v4 fixtures with malformed lengths/enums/quaternions/NaNs,
+stream ordering and matching legacy/new CSV column counts. All **3 Python tests**
+passed, including v4 decoding and invalid event rejection. Git diff whitespace
+check passed. Git's LF/CRLF normalization notices are not compiler warnings.
+
+The Windows GUI was opened with synthetic v4 UDP fixtures. Raw, anchor, relative,
+public, step/event/counter and residual fields were visible without clipping at
+the default window size. This was a layout check, not physical tracking evidence;
+fixture sensor rates and diagnostic gap values are synthetic. The test viewer
+was closed afterward. Android UI/sensor/session lifecycle still needs the S24.
+
+Exact local build commands, from the repository root in PowerShell:
+
+```powershell
+$env:ANDROID_HOME="$PWD/.tools/android-sdk"
+& ./android/AstraeusTracker/gradlew.bat -p android/AstraeusTracker assembleDebug testDebugUnitTest lintDebug --no-daemon -g "$PWD/.tools/gradle-home"
+& ./pc/AstraeusPoseViewer/build-mingw.ps1 -Compiler "$PWD/.tools/w64devkit/bin/g++.exe" -OutputDirectory build/milestone-1.5.1
+& 'C:\Users\Husi\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m unittest discover -s scripts -p 'test_*.py'
+```
+
+The ignored `.tools` directory is local tooling, not a fresh-clone dependency.
+README documents standard SDK/JDK and MSVC/MinGW setup. CI uses JDK 17 on Ubuntu
+and MSVC/CMake on Windows. Artifacts:
+
+- `android/AstraeusTracker/app/build/outputs/apk/debug/app-debug.apk`
+- `pc/AstraeusPoseViewer/build/milestone-1.5.1/AstraeusPoseViewer.exe`
+
+Ready for controlled **Milestone 1.5.1 physical testing**, not physical acceptance.
+Use the new procedure at the top of testing.md, including a 20–30 second final
+stationary hold. No physical result is claimed for this code. A shared-frame
+invariance proof does not establish that every real map change is shared, nor
+does it establish return accuracy, latency or comfort. PAUSED anchors are retained;
+permanently paused anchors may require manual session restart. Same-anchor loss
+still makes unseen translation ambiguous. No 1.5.2 translational carry/adaptive
+recovery or VR-runtime integration was added.
+
+Historical validation records follow.
+
 ## Milestone 1.5 — 2026-09-18
 
 Android 0.1.5 debug APK assembled successfully with the pinned toolchain. All

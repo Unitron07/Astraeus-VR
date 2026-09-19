@@ -1,30 +1,31 @@
 # Astraeus
 
-Experimental standalone phone-based PCVR research. Milestone 1.5 combines ARCore visual anchors with timestamped Android gyro propagation in a persistent Astraeus world. Headset-quality tracking has not been demonstrated.
+Experimental standalone phone-based PCVR research. Milestone 1.5.1 combines camera-relative-to-anchor visual tracking with timestamped Android gyro propagation. Headset-quality tracking has not been demonstrated.
 
 ## Current status
 
-Milestone 1.5 implementation: high-rate rotational fusion, position hold during
+Milestone 1.5.1 implementation: persistent local ARCore anchor, high-rate rotational fusion, position hold during
 visual loss, world-pose discontinuity compensation, separate user recenter,
 raw/fused viewer comparison and buffered diagnostic logging. No streaming, VR
 runtime driver or controllers are implemented. The new code requires physical
-S24 testing. Earlier user-reported measurements are recorded separately in
+S24 testing. Shared camera/anchor world changes create no recovery debt. Genuine
+relative anomalies and reacquisition remain separate safety paths. Earlier user-reported measurements are recorded separately in
 [observations](docs/milestone-1.5-observations.md). See [validation](docs/validation.md)
 and the [Milestone 1.5 test procedure](docs/testing.md).
 
 The viewer and CSV include `tracking_failure_reason`: NONE, BAD_STATE,
 INSUFFICIENT_LIGHT, EXCESSIVE_MOTION, INSUFFICIENT_FEATURES or CAMERA_UNAVAILABLE.
-Update both apps for protocol v3. The viewer also accepts v1/v2 trackers (v1
+Update both apps for v3 public poses and v4 anchor diagnostics. The viewer also accepts v1/v2 trackers (v1
 reports UNKNOWN for the missing failure reason). NONE during PAUSED can mean
 normal initialization. Failure reason and fused tracking quality are separate.
 
 ## Architecture
 
-`ARCore + timestamped gyro -> Astraeus world W -> user origin U -> public pose -> UDP`
+`inverse(anchor world) * camera world -> Astraeus alignment -> gyro fusion -> user origin U -> public pose`
 
 - [Android](android/AstraeusTracker): tracking, pure Kotlin pose math, encoder and transport modules.
 - [PC](pc/AstraeusPoseViewer): independent protocol decoder, stream diagnostics, Winsock receiver and Win32/GDI visualization.
-- [Protocol](protocol/pose_protocol.md): 112-byte public pose, 352-byte diagnostics, coordinate conventions, timestamps and device identity.
+- [Protocol](protocol/pose_protocol.md): 112-byte public pose, 488-byte anchor diagnostics, legacy layouts and coordinate conventions.
 - [Architecture](docs/architecture.md): threading, recenter math, velocity derivation and future boundaries.
 - [Roadmap](docs/roadmap.md): runtime bridge, stereo streaming, optics, latency, reprojection and controllers.
 
@@ -138,7 +139,7 @@ files named `astraeus-<time>.csv` are created in the viewer's working directory.
 
 ## Known limitations
 
-- No claim of headset-quality accuracy, comfort or latency; Milestone 1.5 S24 tests pending.
+- No claim of headset-quality accuracy, comfort or latency; Milestone 1.5.1 S24 tests pending.
 - Camera physical pose is a headset proxy; no camera-to-eye/mount calibration.
 - ARCore bounds position updates; gyro propagation supplies intermediate orientation.
   Requested output is 120 Hz by default, configurable to 240 Hz; actual rates must be measured.

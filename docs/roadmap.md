@@ -1,8 +1,9 @@
 # Roadmap
 
-1. **Current: Milestone 1.5 tracking fusion and continuity.** Timestamped gyro
+1. **Current: Milestone 1.5.1 anchor-relative reference.** Timestamped gyro
    propagation, persistent world W, separate recenter U, discontinuity detection,
-   position hold during loss and raw/fused diagnostics are implemented. Compare
+   position hold during loss and raw/anchor/relative/public diagnostics are implemented. Shared
+   ARCore world changes no longer create correction debt. Compare
    them on the S24 using the documented test sequence. Hardware acceptance remains
    pending; a successful build is not evidence of headset-quality tracking.
 2. **Runtime pose bridge.** After evaluating measurements, expose a virtual HMD to
@@ -26,5 +27,6 @@
    defines the headset or controller implementation.
 
 Milestones 2–7 are plans, not implemented features. Favor measured results over
-theoretical latency optimizations. Decide after Milestone 1.5 whether ARCore's loss,
+theoretical latency optimizations. Validate Milestone 1.5.1 before considering
+1.5.2 translational prediction or motion-adaptive recovery. Decide whether ARCore's loss,
 relocalization and motion behavior justify any runtime or streaming work.

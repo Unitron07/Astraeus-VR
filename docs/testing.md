@@ -1,5 +1,60 @@
 # Repeatable S24 tracking test
 
+## Milestone 1.5.1: anchor-relative validation (next run)
+
+Use the new 0.1.5.1 APK and
+`pc/AstraeusPoseViewer/build/milestone-1.5.1/AstraeusPoseViewer.exe`. Close older
+viewers on UDP 4242. Start with 120 Hz, calibrated gyro, default safety thresholds
+and gradual reacquisition correction off. 240 Hz remains an optional comparison.
+
+1. Record commit, phone/Android/AR services versions, lighting, mount and network.
+   Mark the exact physical camera position and orientation with a repeatable support.
+2. Connect to the PC, enable Android binary logging, then Start Tracking. Enable
+   PC CSV logging. Reset the PC stream if replacing a prior Android session.
+3. Wait for anchor ID > 0, anchor TRACKING, clock valid and FULL_6DOF. Initial
+   anchor creation takes three consecutive healthy frames. Recenter once at the
+   marked pose; confirm origin revision increments without changing anchor ID.
+4. Remain stationary initially for 30 seconds. Move normally around the room,
+   including translation, rotation and a loop. Note times of any natural visual
+   degradation. A separately labeled brief obstruction trial can test reacquisition.
+5. Return to the exact marked physical position AND orientation. Remain stationary
+   for at least **20–30 seconds** before disabling both logs and stopping tracking.
+6. Extract the Android binary log using the commands below and decode it. New
+   snapshots are in `.anchor_diagnostics.csv`; `.poses.csv`, `.imu.csv` and `.raw.csv`
+   remain available. PC `-diagnostics.csv` has equivalent anchor columns.
+7. Compare raw camera world, anchor world, camera_anchor and public fused poses.
+   For a candidate Class A event, verify raw and anchor world steps while relative
+   and public poses stay continuous, quality stays FULL_6DOF, and no new residual
+   or subsequent stationary creep appears. Analyze the full final stationary hold.
+8. Separate ANCHOR_RELATIVE_DISCONTINUITY, TRACKING_REACQUISITION, ANCHOR_LOST and
+   ANCHOR_REPLACED events. Check held position, gyro orientation, recovery settling,
+   invalid linear velocity on boundaries and stable anchor ID across recenter.
+   Do not expect to force anchor STOPPED reliably on demand; its replacement policy
+   is covered synthetically until a physical occurrence can be recorded.
+
+Validate camera and anchor states, clock validity and step flags before interpreting
+relative measurements. Heartbeat snapshots can repeat the same visual frame/event;
+deduplicate by frame timestamp and anchor ID. PC diagnostic sequence gaps can mean
+an omitted event; use Android logs and reject incomplete reconstructions if its
+writer reports drops. Sensor anomaly bits can be added between visual frames;
+inspect the mask and cumulative anomaly counts as well as the main event name.
+
+Anchor orientation defines the initial local axes. Compare raw camera and anchor
+in the shared ARCore world, and camera_anchor/public in their documented local
+spaces; raw_user overlay is legacy diagnostic data, not an aligned physical reference.
+Use the saved user/alignment transforms when comparing coordinates. Do not infer
+success just because public output is smooth: also measure return-to-origin error,
+stationary drift, measured rates, gyro gaps and visible response.
+
+After the baseline, an optional separate trial can enable bounded same-anchor
+reacquisition correction. A shared world update must still produce no new debt.
+Then benchmark 240 Hz and logging on/off separately. Do not enable translational
+prediction, velocity carry or adaptive recovery; they are outside this build.
+
+The Milestone 1.5 sequence below is retained as historical context; for this build
+use the anchor-relative procedure above and per-visual v4 diagnostics, not the old
+10 Hz v3 diagnostic cadence.
+
 ## Milestone 1.5: next physical test
 
 Install the rebuilt 0.1.5 APK and run the new Windows viewer. Close any older
