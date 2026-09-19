@@ -6,6 +6,8 @@ from contextlib import ExitStack
 from pathlib import Path
 
 QUALITY = ['UNAVAILABLE', 'FULL_6DOF', 'INERTIAL_ONLY', 'RECOVERING', 'DEGRADED']
+EVENT = ['NONE', 'RAW_WORLD_UPDATE_COMPENSATED', 'ANCHOR_RELATIVE_DISCONTINUITY',
+         'TRACKING_REACQUISITION', 'ANCHOR_LOST', 'CLOCK_ANOMALY', 'SENSOR_ANOMALY', 'ANCHOR_CREATED', 'ANCHOR_REPLACED']
 REASON = ['NONE', 'BAD_STATE', 'INSUFFICIENT_LIGHT', 'EXCESSIVE_MOTION',
           'INSUFFICIENT_FEATURES', 'CAMERA_UNAVAILABLE']
 
@@ -37,7 +39,7 @@ def decode(data):
         return 'imu', dict(sensor='gyro' if kind == 1 else 'accel', timestamp=t,
                            x=x, y=y, z=z, bias_x=bx, bias_y=by, bias_z=bz,
                            accuracy=accuracy, uncalibrated=uncalibrated)
-    if magic != b'ASTR' or version != 3 or (kind, size) not in ((1, 112), (2, 352)):
+    if magic != b'ASTR' or (version, kind, size) not in ((3, 1, 112), (3, 2, 352), (4, 2, 488)):
         raise ValueError('Unsupported record schema')
     seq, device, session, timestamp, revision = struct.unpack_from('<IIQQI', data, 8)
     row = dict(sequence_number=seq, device_id=device, session_id=session,
@@ -65,6 +67,20 @@ def decode(data):
     row.update(zip(['gyro_anomalies', 'tracking_anomalies', 'clock_anomalies', 'android_log_drops'],
                    struct.unpack_from('<4I', data, 296)))
     row.update(zip(['heap_mb', 'cpu_cores'], struct.unpack_from('<2f', data, 312)))
+    if version == 4:
+        for offset, prefix in [(352, 'anchor_world'), (380, 'camera_anchor'), (408, 'alignment')]:
+            row.update(pose_fields(data, offset, prefix))
+        row.update(zip(['raw_camera_world_step_position', 'raw_camera_world_step_angle',
+                        'anchor_world_step_position', 'anchor_world_step_angle',
+                        'camera_anchor_step_position', 'camera_anchor_step_angle'], struct.unpack_from('<6f', data, 436)))
+        if data[464] > 2 or data[465] >= len(EVENT) or data[466] > 7 or data[467]:
+            raise ValueError('Invalid anchor diagnostics')
+        row.update(anchor_id=struct.unpack_from('<I', data, 460)[0], anchor_tracking_state=data[464],
+                   event_classification=EVENT[data[465]], step_valid_flags=data[466])
+        row.update(zip(['raw_world_update_count', 'anchor_relative_discontinuity_count', 'reacquisition_count',
+                        'anchor_loss_count', 'event_mask'], struct.unpack_from('<5I', data, 468)))
+        row['diagnostic_version'] = version
+        return 'anchor_diagnostics', row
     return 'diagnostics', row
 
 
@@ -77,7 +93,7 @@ def convert(source, prefix):
             if len(length) != 4:
                 raise ValueError('Truncated record length')
             size = struct.unpack('>I', length)[0]  # DataOutputStream envelope is big-endian.
-            if size not in (48, 80, 112, 352):
+            if size not in (48, 80, 112, 352, 488):
                 raise ValueError(f'Invalid record size {size}')
             data = input_file.read(size)
             if len(data) != size:

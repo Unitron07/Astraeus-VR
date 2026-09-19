@@ -48,6 +48,18 @@ static LRESULT CALLBACK windowProc(HWND window,UINT message,WPARAM wParam,LPARAM
             text<<"Discontinuities: "<<d.count<<" | last "<<d.values[9]<<" m / "<<d.values[10]*57.29578<<" deg | residual "<<d.values[7]<<" m / "<<d.values[8]*57.29578<<" deg\r\n";
             text<<"Clock valid: "<<int(d.clockValid)<<" | gyro accuracy: "<<d.gyroAccuracy<<" | heap "<<d.heapMb<<" MB | CPU "<<d.cpu*100<<"% of one core\r\n";
             text<<"Raw ARCore XYZ: "<<d.raw.position[0]<<"  "<<d.raw.position[1]<<"  "<<d.raw.position[2]<<"\r\n";
+            if(d.version==4) {
+                text<<"Anchor #"<<d.anchorId<<": "<<trackingName(d.anchorState)<<" | Event: "<<eventName(d.event)<<" | diagnostic gaps: "<<s.diagnosticsMissing<<"\r\n";
+                auto poseLine=[&](const char* label,const Pose& p) {
+                    text<<label<<" XYZ: "; for(float v:p.position) text<<v<<' ';
+                    text<<" | XYZW: "; for(float v:p.orientation) text<<v<<' '; text<<"\r\n";
+                };
+                text<<"Raw world XYZW: "; for(float v:d.raw.orientation) text<<v<<' '; text<<"\r\n";
+                poseLine("Anchor world",d.anchorWorld); poseLine("Camera / anchor",d.cameraAnchor);
+                text<<"Steps m/deg: raw "<<d.steps[0]<<'/'<<d.steps[1]*57.29578<<" | anchor "<<d.steps[2]<<'/'<<d.steps[3]*57.29578
+                    <<" | relative "<<d.steps[4]<<'/'<<d.steps[5]*57.29578<<" | valid bits "<<int(d.stepFlags)<<"\r\n";
+                text<<"Events: world "<<d.rawWorldUpdates<<" | relative "<<d.relativeDiscontinuities<<" | reacquire "<<d.reacquisitions<<" | anchor loss "<<d.anchorLosses<<"\r\n";
+            }
         } else text<<"Layer diagnostics: waiting/stale (v1/v2 senders do not provide these)\r\n";
         text<<"Position XYZ (m): "; for(auto x:s.latest.position) text<<x<<"  "; text<<"\r\nQuaternion XYZW: ";
         for(auto x:s.latest.orientation) { text<<x<<"  "; }
@@ -57,8 +69,8 @@ static LRESULT CALLBACK windowProc(HWND window,UINT message,WPARAM wParam,LPARAM
         for(auto x:s.latest.angular) { text<<x<<"  "; }
         text<<" | valid="<<bool(s.latest.flags&2)<<"\r\n";
         text<<receiver->diagnostic()<<"\r\nGrid: 0.5 m | Purple: Astraeus | Cyan: raw through user recenter ONLY | Rod points forward (-Z).";
-        RECT content{16,52,area.right-16,410}; auto value=text.str(); DrawTextA(dc,value.c_str(),-1,&content,DT_LEFT|DT_NOPREFIX);
-        RECT world{16,415,area.right-16,area.bottom-10};
+        RECT content{16,52,area.right-16,540}; auto value=text.str(); DrawTextA(dc,value.c_str(),-1,&content,DT_LEFT|DT_NOPREFIX);
+        RECT world{16,545,area.right-16,area.bottom-10};
         const Pose* raw=diagnosticFresh && s.diagnostics.state==2?&s.diagnostics.rawUser:nullptr;
         drawWorld(dc,world,s.latest,s.locked&&age<1&&s.latest.quality!=0,raw,viewMode);
         BitBlt(target,0,0,area.right,area.bottom,dc,0,0,SRCCOPY); SelectObject(dc,old); DeleteObject(bitmap); DeleteDC(dc);

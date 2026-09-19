@@ -66,7 +66,7 @@ void Receiver::run() {
         }
         char address[INET_ADDRSTRLEN]{}; inet_ntop(AF_INET,&from.sin_addr,address,sizeof(address));
         std::string endpoint=std::string(address)+":"+std::to_string(ntohs(from.sin_port));
-        if(count>=6 && bytes[4]==3 && bytes[5]==2) {
+        if(count>=6 && (bytes[4]==3 || bytes[4]==4) && bytes[5]==2) {
             auto d=decodeDiagnostics(bytes,size_t(count));
             if(!d) { ++stream_.invalid; continue; }
             if(stream_.ingestDiagnostics(*d,endpoint,now) && diagnosticLog_.is_open()) {

@@ -15,11 +15,13 @@ struct Stream {
     bool hasDiagnostics=false;
     double diagnosticsReceive=0;
     uint64_t diagnosticsReceived=0;
+    uint64_t diagnosticsMissing=0;
     bool ingestDiagnostics(const Diagnostics& d,const std::string& from,double now) {
         if(!locked || from!=endpoint || d.session!=latest.session || d.device!=latest.device) return false;
         if(hasDiagnostics) {
             uint32_t delta=d.sequence-diagnostics.sequence;
             if(delta==0 || delta>=0x80000000u || d.timestamp<=diagnostics.timestamp) return false;
+            if(d.version==4 && diagnostics.version==4) diagnosticsMissing+=delta-1;
         }
         diagnostics=d; diagnosticsReceive=now; hasDiagnostics=true; ++diagnosticsReceived; return true;
     }

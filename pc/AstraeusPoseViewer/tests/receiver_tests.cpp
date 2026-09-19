@@ -76,6 +76,10 @@ int main(int argc,char** argv) {
         load("golden_diagnostics.hex"); send(); waitFor([](const Stream& s){return s.diagnosticsReceived==1;});
         check(receiver.snapshot().latest.quality==3,"public recovering quality");
         check(receiver.snapshot().diagnostics.world.position[0]==-1,"world compensation diagnostic");
+        load("golden_anchor_diagnostics.hex"); bytes[8]=43;
+        timestamp=1033000000; for(int i=0;i<8;++i) bytes[24+i]=uint8_t(timestamp>>(8*i));
+        send(); waitFor([](const Stream& s){return s.diagnosticsReceived==2;});
+        check(receiver.snapshot().diagnostics.anchorId==1 && receiver.snapshot().diagnostics.event==7,"anchor diagnostic delivered");
         check(!receiver.toggleLogging(),"close fusion CSV");
         diagnostic=receiver.diagnostic(); end=diagnostic.find(" | CSV"); path=diagnostic.substr(5,end-5);
         auto diagnosticPath=path.substr(0,path.size()-4)+"-diagnostics.csv";
@@ -83,6 +87,7 @@ int main(int argc,char** argv) {
         check(bool(std::getline(fusionLog,header)) && bool(std::getline(fusionLog,data)),"fusion diagnostic CSV rows");
         check(header.find("raw_px")!=std::string::npos && header.find("fused_qw")!=std::string::npos,"raw/fused columns");
         check(data.find("RECOVERING")!=std::string::npos,"logged quality");
+        check(bool(std::getline(fusionLog,data)) && data.find("ANCHOR_CREATED")!=std::string::npos,"logged anchor event");
         fusionLog.close(); std::filesystem::remove(path); std::filesystem::remove(diagnosticPath);
         closesocket(sender);
         std::cout<<"UDP loopback, duplicates, gaps, malformed input, session lock/reset, recenter revision and CSV passed\n";

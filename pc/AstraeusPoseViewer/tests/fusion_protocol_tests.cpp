@@ -5,6 +5,7 @@
 #include <sstream>
 #include <vector>
 #include <stdexcept>
+#include <algorithm>
 static void check(bool value) { if(!value) throw std::runtime_error("Fusion protocol check failed"); }
 static std::vector<uint8_t> fixture(const std::string& path) {
     std::ifstream in(path); check(bool(in)); std::string hex; std::vector<uint8_t> bytes;
@@ -31,7 +32,25 @@ int main(int argc,char** argv) {
         check(stream.received==1 && stream.accepted==1 && stream.missing==0);
         std::ostringstream csv; astraeus::diagnosticHeader(csv); astraeus::diagnosticRow(csv,*diag,1.0);
         check(csv.str().find("RECOVERING")!=std::string::npos && csv.str().find("residual_position")!=std::string::npos);
-        std::cout<<"v3 public/diagnostic fixtures, lengths, validity, stream ordering and CSV passed\n";
+        auto a=fixture(std::string(argv[1])+"/golden_anchor_diagnostics.hex");
+        auto anchor=astraeus::decodeDiagnostics(a.data(),a.size()); check(bool(anchor));
+        check(anchor->version==4 && anchor->anchorId==1 && anchor->anchorState==2 && anchor->event==7 && anchor->eventMask==128);
+        check(anchor->alignment.orientation[3]==1 && anchor->cameraAnchor.orientation[3]==1);
+        for(size_t n=0;n<a.size();++n) check(!astraeus::decodeDiagnostics(a.data(),n));
+        for(size_t index:{size_t(464),size_t(465),size_t(466),size_t(467),size_t(487)}) {
+            auto broken=a; broken[index]=255; check(!astraeus::decodeDiagnostics(broken.data(),broken.size()));
+        }
+        auto broken=a; broken[4]=3; check(!astraeus::decodeDiagnostics(broken.data(),broken.size()));
+        broken=a; broken[379]=0; check(!astraeus::decodeDiagnostics(broken.data(),broken.size()));
+        broken=a; broken[439]=0x7f; broken[438]=0xc0; check(!astraeus::decodeDiagnostics(broken.data(),broken.size()));
+        std::ostringstream anchorCsv; astraeus::diagnosticHeader(anchorCsv); astraeus::diagnosticRow(anchorCsv,*anchor,1.0);
+        check(anchorCsv.str().find("ANCHOR_CREATED")!=std::string::npos && anchorCsv.str().find("camera_anchor_px")!=std::string::npos);
+        auto columnCount=[](const std::string& row) { return std::count(row.begin(),row.end(),','); };
+        std::istringstream rows(anchorCsv.str()); std::string header,line; std::getline(rows,header); std::getline(rows,line);
+        check(columnCount(header)==columnCount(line));
+        std::istringstream legacyRows(csv.str()); std::getline(legacyRows,header); std::getline(legacyRows,line);
+        check(columnCount(header)==columnCount(line));
+        std::cout<<"v3/v4 fixtures, malformed lengths/fields, stream ordering and CSV passed\n";
         return 0;
     } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }
 }

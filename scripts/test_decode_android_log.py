@@ -37,6 +37,19 @@ class LogTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             decode(bytes(48))
 
+    def test_anchor_fixture_and_invalid_enum(self):
+        packet = bytes.fromhex((ROOT / 'protocol/golden_anchor_diagnostics.hex').read_text())
+        kind, row = decode(packet)
+        self.assertEqual(kind, 'anchor_diagnostics')
+        self.assertEqual(row['anchor_id'], 1)
+        self.assertEqual(row['event_classification'], 'ANCHOR_CREATED')
+        self.assertEqual(row['camera_anchor_qw'], 1)
+        self.assertEqual(row['event_mask'], 128)
+        broken = bytearray(packet)
+        broken[465] = 255
+        with self.assertRaises(ValueError):
+            decode(broken)
+
 
 if __name__ == '__main__':
     unittest.main()

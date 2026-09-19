@@ -2,7 +2,16 @@
 #include "pose.hpp"
 
 namespace astraeus {
+inline const char* eventName(uint8_t value) {
+    static const char* names[]={"NONE","RAW_WORLD_UPDATE_COMPENSATED","ANCHOR_RELATIVE_DISCONTINUITY",
+        "TRACKING_REACQUISITION","ANCHOR_LOST","CLOCK_ANOMALY","SENSOR_ANOMALY","ANCHOR_CREATED","ANCHOR_REPLACED"};
+    return value<9?names[value]:"UNKNOWN";
+}
 struct Diagnostics {
+    uint8_t version=3,anchorState=0,event=0,stepFlags=0;
+    uint32_t anchorId=0,rawWorldUpdates=0,relativeDiscontinuities=0,reacquisitions=0,anchorLosses=0,eventMask=0;
+    Pose anchorWorld,cameraAnchor,alignment;
+    std::array<float,6> steps{};
     uint32_t sequence{},device{},revision{},count{},gyroAnomalies{},anomalies{},clockAnomalies{},logDrops{};
     uint64_t session{},timestamp{},frameTimestamp{},cameraTimestamp{},gyroTimestamp{},accelTimestamp{};
     int32_t gyroAccuracy{},accelAccuracy{};
@@ -15,7 +24,8 @@ struct Diagnostics {
     float heapMb{},cpu{};
 };
 inline std::optional<Diagnostics> decodeDiagnostics(const uint8_t* b,size_t n) {
-    if(n!=352 || std::memcmp(b,"ASTR",4) || b[4]!=3 || b[5]!=2 || integer(b+6,2)!=352) return {};
+    if(n<8 || std::memcmp(b,"ASTR",4) || b[5]!=2 || integer(b+6,2)!=n ||
+        !((b[4]==3 && n==352) || (b[4]==4 && n==488))) return {};
     if(b[36]!=1 || b[37]!=1 || b[38]>2 || (b[39]&~3) || b[276]>1 || b[277]>1 || b[278]>1 || b[279]>4 ||
         (b[348]>5 && b[348]!=255) || b[349]!=b[279] || integer(b+350,2)) return {};
     Diagnostics d;
@@ -44,6 +54,17 @@ inline std::optional<Diagnostics> decodeDiagnostics(const uint8_t* b,size_t n) {
     d.clockAnomalies=uint32_t(integer(b+304,4)); d.logDrops=uint32_t(integer(b+308,4));
     offset=312; std::array<float,2> perf{}; if(!fields(perf)) return {};
     d.heapMb=perf[0]; d.cpu=perf[1]; if(!pose(d.output)) return {};
+    d.version=b[4];
+    if(d.version==4) {
+        offset=352;
+        if(!pose(d.anchorWorld)||!pose(d.cameraAnchor)||!pose(d.alignment)||!fields(d.steps)) return {};
+        d.anchorId=uint32_t(integer(b+460,4)); d.anchorState=b[464]; d.event=b[465]; d.stepFlags=b[466];
+        d.rawWorldUpdates=uint32_t(integer(b+468,4)); d.relativeDiscontinuities=uint32_t(integer(b+472,4));
+        d.reacquisitions=uint32_t(integer(b+476,4)); d.anchorLosses=uint32_t(integer(b+480,4));
+        d.eventMask=uint32_t(integer(b+484,4));
+        if(d.anchorState>2 || d.event>8 || d.stepFlags>7 || b[467] || (d.eventMask&~0x1feu)) return {};
+        for(float v:d.steps) if(v<0) return {};
+    }
     return d;
 }
 }
